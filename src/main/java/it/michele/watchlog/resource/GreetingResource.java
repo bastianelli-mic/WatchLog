@@ -1,4 +1,4 @@
-package it.michele.watchlog;
+package it.michele.watchlog.resource;
 
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
