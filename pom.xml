@@ -30,9 +30,16 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- Hibernate Reactive dependency -->
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-hibernate-orm-panache</artifactId>
+            <artifactId>quarkus-hibernate-reactive</artifactId>
+        </dependency>
+
+        <!-- Reactive SQL client for PostgreSQL -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-reactive-pg-client</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
