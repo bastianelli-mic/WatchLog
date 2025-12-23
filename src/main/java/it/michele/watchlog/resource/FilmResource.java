@@ -2,6 +2,7 @@ package it.michele.watchlog.resource;
 
 import io.smallrye.mutiny.Uni;
 import it.michele.watchlog.model.Film;
+import it.michele.watchlog.resource.dto.FilmDTO;
 import it.michele.watchlog.service.FilmService;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -16,8 +17,8 @@ public class FilmResource {
     @Path("/create")
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    public Uni<Void> create(Film film){
-        return filmService.create(film);
+    public Uni<Void> create(FilmDTO filmDTO){
+        return filmService.create(new Film(filmDTO.getTitle()));
     }
 
     @Path("/get/{id}")

@@ -32,4 +32,14 @@ public class FilmService {
                 session -> session.find(Film.class, id)
         );
     }
+
+    public Uni<Film> findByTitle(Mutiny.Session session, String title){
+        var cb = sf.getCriteriaBuilder();
+        var query = cb.createQuery(Film.class);
+        var root = query.from(Film.class);
+
+        query.where(cb.equal(cb.lower(root.get("title")), title.toLowerCase()));
+
+        return session.createQuery(query).getSingleResult();
+    }
 }
