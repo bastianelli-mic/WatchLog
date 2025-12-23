@@ -3,3 +3,18 @@ services:
     image: bastianelli-mic/watchlog:1.0.0-SNAPSHOT
     ports:
       - 8100:8080
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres_quarkus
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: watchlog
+      POSTGRES_PASSWORD: watchlog
+      POSTGRES_DB: watchlog
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
