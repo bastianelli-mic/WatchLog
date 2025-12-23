@@ -18,7 +18,7 @@ public class FilmTest {
 
     @Test
     void testCreateFilm(){
-        filmService.create(new Film(1000L, ACE_VENTURA))
+        filmService.create(new Film(ACE_VENTURA))
                 .await()
                 .indefinitely();
 
