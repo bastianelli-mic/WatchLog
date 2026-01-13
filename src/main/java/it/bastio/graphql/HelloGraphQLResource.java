@@ -1,4 +1,4 @@
-package it.bastio;
+package it.bastio.graphql;
 
 import org.eclipse.microprofile.graphql.DefaultValue;
 import org.eclipse.microprofile.graphql.Description;
