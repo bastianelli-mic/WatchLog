@@ -1,11 +1,10 @@
 package it.bastio.graphql;
 
+import io.smallrye.mutiny.Uni;
 import it.bastio.model.Film;
 import it.bastio.service.FilmService;
 import jakarta.inject.Inject;
-import org.eclipse.microprofile.graphql.GraphQLApi;
-import org.eclipse.microprofile.graphql.Mutation;
-import org.eclipse.microprofile.graphql.Query;
+import org.eclipse.microprofile.graphql.*;
 
 import java.util.List;
 
@@ -16,22 +15,27 @@ public class FilmGraphQLResource {
     FilmService filmService;
 
     @Query
-    public List<Film> getFilms() {
+    public Uni<List<Film>> getFilms() {
         return filmService.getFilms();
     }
 
     @Query
-    public Film findFilmById(Integer id) {
+    public Uni<Film> findFilmById(Integer id) {
         return filmService.getFilmById(id);
     }
 
     @Mutation
-    public Film addFilm(Film film) {
+    public Uni<Film> addFilm(Film film) {
         return filmService.addFilm(film);
     }
 
     @Mutation
-    public Film removeFilm(Integer id) {
+    public Uni<Film> patchFilm(@NonNull @Id Integer id, Film film, @DefaultValue("true") boolean patch) {
+        return filmService.patchFilm(id, film, patch);
+    }
+
+    @Mutation
+    public Uni<Film> removeFilm(Integer id) {
         return filmService.removeFilm(id);
     }
 }

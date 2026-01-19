@@ -1,5 +1,6 @@
 package it.bastio.service;
 
+import io.smallrye.mutiny.Uni;
 import it.bastio.model.Film;
 import jakarta.enterprise.context.ApplicationScoped;
 
@@ -35,22 +36,27 @@ public class FilmService {
         films.add(streghe);
     }
 
-    public List<Film> getFilms() {
-        return films;
+    public Uni<List<Film>> getFilms() {
+        return Uni.createFrom().item(films);
     }
 
-    public Film getFilmById(Integer id) {
-        return films.get(id);
+    public Uni<Film> getFilmById(Integer id) {
+        return Uni.createFrom().item(films.get(id));
     }
 
-    public Film addFilm(Film film) {
+    public Uni<Film> addFilm(Film film) {
         films.add(film);
-        return film;
+        return Uni.createFrom().item(film);
     }
 
-    public Film removeFilm(Integer id) {
+    public Uni<Film> patchFilm(Integer id, Film film, boolean patch) {
+        films.set(id, film);
+        return Uni.createFrom().item(film);
+    }
+
+    public Uni<Film> removeFilm(Integer id) {
         Film film = films.get(id);
         films.remove(film);
-        return film;
+        return Uni.createFrom().item(film);
     }
 }
