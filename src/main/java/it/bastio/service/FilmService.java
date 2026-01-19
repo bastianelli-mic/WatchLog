@@ -3,12 +3,17 @@ package it.bastio.service;
 import io.smallrye.mutiny.Uni;
 import it.bastio.model.Film;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.hibernate.reactive.mutiny.Mutiny;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @ApplicationScoped
 public class FilmService {
+
+    @Inject
+    Mutiny.SessionFactory sf;
 
     private List<Film> films = new ArrayList<>();
 
@@ -45,8 +50,8 @@ public class FilmService {
     }
 
     public Uni<Film> addFilm(Film film) {
-        films.add(film);
-        return Uni.createFrom().item(film);
+        return sf.withTransaction(session -> session.persist(film))
+            .map(unused -> film);
     }
 
     public Uni<Film> patchFilm(Integer id, Film film, boolean patch) {
