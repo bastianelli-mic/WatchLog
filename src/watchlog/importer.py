@@ -10,6 +10,8 @@ from watchlog.parser import Anomaly, Entry, parse_export
 from watchlog.resolver import Resolution, resolve
 from watchlog.tmdb import Candidate
 
+MAX_DAYS_BEFORE_SEND = 31  # oltre, la data di visione scritta in chat è probabilmente un refuso
+
 
 @dataclass
 class ImportReport:
@@ -21,6 +23,7 @@ class ImportReport:
     unmapped_authors: dict[str, int] = field(default_factory=dict)
     unresolved: list[Resolution] = field(default_factory=list)  # un film distinto per voce
     unresolved_viewings: int = 0
+    suspicious_dates: list[Entry] = field(default_factory=list)
 
 
 def import_chat(text: str, db: Database, client, corrections: Corrections) -> ImportReport:
@@ -30,6 +33,7 @@ def import_chat(text: str, db: Database, client, corrections: Corrections) -> Im
     """
     parsed = parse_export(text)
     report = ImportReport(entries=len(parsed.entries), anomalies=parsed.anomalies)
+    report.suspicious_dates = [entry for entry in parsed.entries if _is_suspicious_date(entry)]
     film_ids: dict[tuple[str, int], int | None] = {}
 
     for entry in parsed.entries:
@@ -104,6 +108,14 @@ def _resolve_film(entry: Entry, client, corrections: Corrections, report: Import
         return resolution.best.candidate.tmdb_id
     report.unresolved.append(resolution)
     return None
+
+
+def _is_suspicious_date(entry: Entry) -> bool:
+    """Data scritta in chat molto prima dell'invio, o successiva ad esso. Il ripiego sulla data di invio non conta."""
+    if entry.watched_on_source != "body":
+        return False
+    days_before_send = (entry.sent_at.date() - entry.watched_on).days
+    return days_before_send > MAX_DAYS_BEFORE_SEND or days_before_send < 0
 
 
 def _source_ref(entry: Entry) -> str:

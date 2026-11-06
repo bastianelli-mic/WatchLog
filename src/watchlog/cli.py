@@ -199,6 +199,14 @@ def _print_import_report(report: ImportReport, dry_run: bool) -> None:
         )
         print(corrections_template(report.unresolved))
 
+    if report.suspicious_dates:
+        print(f"\nDate sospette ({len(report.suspicious_dates)}): visione molto prima dell'invio, o dopo:")
+        for entry in report.suspicious_dates:
+            print(
+                f"  riga {entry.line_no} [{entry.author}] visto il {entry.watched_on}, "
+                f"inviato il {entry.sent_at.date()}: {entry.title} ({entry.year})"
+            )
+
     if report.anomalies:
         print(f"\nAnomalie del parser ({len(report.anomalies)}):")
         for found in report.anomalies:

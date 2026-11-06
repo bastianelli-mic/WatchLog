@@ -243,3 +243,24 @@ def test_stats_without_a_database_fails_clearly(tmp_path, capsys):
 
     assert exit_code == 2
     assert "manca.sqlite" in capsys.readouterr().err
+
+
+def test_import_report_lists_suspicious_dates(tmp_path, monkeypatch, capsys):
+    args, _, _ = _import_setup(tmp_path, monkeypatch)
+    chat = tmp_path / "chat.txt"
+    chat.write_text(chat.read_text(encoding="utf-8") + "06/07/26, 00:50 - Mario Rossi: 05/01/2025 - Roofman (2025)\n", encoding="utf-8")
+
+    main(args + ["--dry-run"])
+
+    out = capsys.readouterr().out
+    assert "Date sospette (1)" in out
+    assert "riga 4" in out
+    assert "visto il 2025-01-05, inviato il 2026-07-06" in out
+
+
+def test_import_report_without_suspicious_dates_has_no_section(tmp_path, monkeypatch, capsys):
+    args, _, _ = _import_setup(tmp_path, monkeypatch)
+
+    main(args + ["--dry-run"])
+
+    assert "Date sospette" not in capsys.readouterr().out

@@ -189,3 +189,54 @@ class TestCorrectionsTemplate:
         path.write_text(template.replace("# - ", "- ").replace("???", "99"), encoding="utf-8")
 
         assert load_corrections(path).get('Dice "ciao"', 2020) == 99
+
+
+class TestSuspiciousDates:
+    def run(self, tmp_path, lines):
+        db, client = make(tmp_path)
+        return import_chat("\n".join(lines) + "\n", db, client, Corrections({})), db, client
+
+    def test_body_date_far_before_the_sent_date_is_flagged(self, tmp_path):
+        report, _, _ = self.run(tmp_path, ["06/07/26, 00:45 - Mario Rossi: 05/01/2025 - Heat (1995)"])
+
+        assert [(e.line_no, e.author, str(e.watched_on)) for e in report.suspicious_dates] == [
+            (1, "Mario Rossi", "2025-01-05")
+        ]
+        assert report.inserted == 1  # l'avviso non blocca l'import
+
+    def test_body_date_after_the_sent_date_is_flagged(self, tmp_path):
+        report, _, _ = self.run(tmp_path, ["06/07/26, 00:45 - Mario Rossi: 07/07/2026 - Heat (1995)"])
+
+        assert len(report.suspicious_dates) == 1
+
+    def test_usual_delays_are_not_flagged(self, tmp_path):
+        report, _, _ = self.run(
+            tmp_path,
+            [
+                "06/07/26, 00:45 - Mario Rossi: 06/07/2026 - Heat (1995)",
+                "06/07/26, 00:46 - Mario Rossi: 05/07/2026 - Heat (1995)",
+            ],
+        )
+
+        assert report.suspicious_dates == []
+
+    def test_limit_is_31_days_included(self, tmp_path):
+        ok, _, _ = self.run(tmp_path, ["06/08/26, 10:00 - Mario Rossi: 06/07/2026 - Heat (1995)"])
+        flagged, _, _ = self.run(tmp_path, ["06/08/26, 10:00 - Mario Rossi: 05/07/2026 - Heat (1995)"])
+
+        assert ok.suspicious_dates == []
+        assert len(flagged.suspicious_dates) == 1
+
+    def test_missing_body_date_is_never_flagged(self, tmp_path):
+        report, _, _ = self.run(tmp_path, ["06/07/26, 00:45 - Mario Rossi: Heat (1995)"])
+
+        assert report.suspicious_dates == []
+
+    def test_already_imported_lines_are_still_checked(self, tmp_path):
+        line = ["06/07/26, 00:45 - Mario Rossi: 05/01/2025 - Heat (1995)"]
+        _, db, client = self.run(tmp_path, line)
+
+        again = import_chat(line[0] + "\n", db, client, Corrections({}))
+
+        assert again.duplicates == 1
+        assert len(again.suspicious_dates) == 1

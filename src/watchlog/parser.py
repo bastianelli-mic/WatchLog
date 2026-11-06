@@ -43,6 +43,7 @@ class Entry:
     year: int
     rating: float | None
     edited: bool
+    line_no: int
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,7 @@ def _parse_message(message: _Message, result: ParseResult) -> None:
             year=int(film.group("year")),
             rating=rating,
             edited=edited,
+            line_no=message.line_no,
         )
     )
     if wrong_date:

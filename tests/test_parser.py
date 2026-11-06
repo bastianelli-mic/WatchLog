@@ -271,3 +271,16 @@ class TestMalformedBodyDate:
         entry = one(header(payload)).entries[0]
 
         assert entry.title == title
+
+
+class TestLineNumber:
+    def test_entry_remembers_the_line_of_its_message(self):
+        text = (
+            header("05/07/2026 - Heat (1995)")
+            + "\n"
+            + header("06/07/2026 - Good Fortune", sent="07/07/26, 10:00")
+            + "\n(2025)\n"
+            + header("08/07/2026 - Ronin (1998)", sent="09/07/26, 10:00")
+        )
+
+        assert [e.line_no for e in parse_export(text).entries] == [1, 2, 4]
