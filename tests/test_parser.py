@@ -215,3 +215,49 @@ class TestParseFilmText:
         from watchlog.parser import parse_film_text
 
         assert parse_film_text("Roofman") is None
+
+
+class TestDeletedMessages:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Hai eliminato questo messaggio.",
+            "Questo messaggio è stato eliminato.",
+            "You deleted this message",
+            "This message was deleted",
+        ],
+    )
+    def test_deleted_message_placeholders_are_ignored_not_anomalies(self, text):
+        result = one(header(text))
+
+        assert result.entries == []
+        assert result.anomalies == []
+
+
+class TestMalformedBodyDate:
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "0000 - Dune parte 1 (2021)",
+            "2203/2026 - Il nome della rosa (1986)",
+            "05/07/26 - Heat (1995)",
+            "05/07 - Heat (1995)",
+        ],
+    )
+    def test_date_like_prefix_that_is_not_a_date_is_an_anomaly_not_part_of_the_title(self, payload):
+        result = one(header(payload))
+
+        assert result.entries == []
+        assert [a.reason for a in result.anomalies] == ["data non valida"]
+
+    @pytest.mark.parametrize(
+        ("payload", "title"),
+        [
+            ("2001 - Odissea nello spazio (1968)", "2001 - Odissea nello spazio"),
+            ("1917 (2019)", "1917"),
+        ],
+    )
+    def test_titles_that_start_with_a_number_are_still_films(self, payload, title):
+        entry = one(header(payload)).entries[0]
+
+        assert entry.title == title

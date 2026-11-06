@@ -18,6 +18,16 @@ _HEADERS = (
     re.compile(r"^\[(\d{1,2}/\d{1,2}/\d{2,4}), (\d{1,2}:\d{2}(?::\d{2})?)\] (.*)$"),
 )
 _BODY_DATE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})\s+-\s+(.*)$")
+# Prefisso che sembra una data ma non lo è (`0000`, `2203/2026`, `05/07/26`): non va letto come titolo.
+# Un numero semplice come `2001 - Odissea nello spazio` resta invece un titolo.
+_MALFORMED_DATE = re.compile(r"^(?:0+|\d+(?:/\d+)+)\s+-\s+")
+# Testi che WhatsApp mette al posto di un messaggio cancellato.
+_DELETED = {
+    "Hai eliminato questo messaggio.",
+    "Questo messaggio è stato eliminato.",
+    "You deleted this message",
+    "This message was deleted",
+}
 _FILM = re.compile(r"^(?P<title>.+?)\s*\((?P<year>\d{4})\)\s*(?:\[(?P<rating>[^\]]*)\])?$")
 _RATING = re.compile(r"^\d(?:[.,][05])?$")
 _STRIP_INVISIBLE = {ord(char): None for char in "﻿‎‏"}
@@ -103,6 +113,8 @@ def _parse_message(message: _Message, result: ParseResult) -> None:
     for marker in EDITED_MARKERS:
         payload = payload.replace(marker, "")
     payload = payload.strip()
+    if payload in _DELETED:
+        return
 
     def anomaly(reason: str) -> None:
         result.anomalies.append(Anomaly(message.line_no, message.author, payload, reason))
@@ -116,6 +128,9 @@ def _parse_message(message: _Message, result: ParseResult) -> None:
         except ValueError:
             anomaly("data non valida")
             return
+    elif _MALFORMED_DATE.match(payload):
+        anomaly("data non valida")
+        return
 
     film = _FILM.match(rest)
     if not film:
