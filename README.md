@@ -30,6 +30,8 @@ I file con i dati reali sono ignorati da git: stanno in `local/`, `data/` e `con
 | Correzioni dei film | `config/corrections.yaml` | Facoltativo. Parti da `config/corrections.example.yaml`. |
 | Database | `data/watchlog.sqlite` | Creato dal primo import. |
 
+Per il bot Discord, in arrivo, la guida per creare l'app e il token è in [docs/discord-app.md](docs/discord-app.md).
+
 Esempio di `config/users.yaml`:
 
 ```yaml
