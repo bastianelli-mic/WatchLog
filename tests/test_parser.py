@@ -6,6 +6,7 @@ import pytest
 from watchlog.parser import parse_export
 
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_chat.txt"
+FALLBACK_REASON = "data non valida, usata la data di invio"
 
 
 def one(line: str):
@@ -56,11 +57,12 @@ class TestWatchedOn:
         assert entry.watched_on_source == "sent_at"
         assert entry.title == "Heat"
 
-    def test_impossible_body_date_is_an_anomaly_and_not_a_silent_fallback(self):
-        result = one(header("31/02/2026 - Heat (1995)"))
+    def test_impossible_body_date_falls_back_to_sent_date_and_is_reported(self):
+        result = one(header("31/02/2026 - Heat (1995)", sent="12/08/26, 14:00"))
 
-        assert result.entries == []
-        assert [a.reason for a in result.anomalies] == ["data non valida"]
+        entry = result.entries[0]
+        assert (entry.title, entry.watched_on, entry.watched_on_source) == ("Heat", date(2026, 8, 12), "sent_at")
+        assert [a.reason for a in result.anomalies] == [FALLBACK_REASON]
 
 
 class TestTitle:
@@ -236,19 +238,27 @@ class TestDeletedMessages:
 
 class TestMalformedBodyDate:
     @pytest.mark.parametrize(
-        "payload",
+        ("payload", "title", "year"),
         [
-            "0000 - Dune parte 1 (2021)",
-            "2203/2026 - Il nome della rosa (1986)",
-            "05/07/26 - Heat (1995)",
-            "05/07 - Heat (1995)",
+            ("0000 - Dune parte 1 (2021)", "Dune parte 1", 2021),
+            ("2203/2026 - Il nome della rosa (1986)", "Il nome della rosa", 1986),
+            ("05/07/26 - Heat (1995)", "Heat", 1995),
+            ("05/07 - Heat (1995)", "Heat", 1995),
         ],
     )
-    def test_date_like_prefix_that_is_not_a_date_is_an_anomaly_not_part_of_the_title(self, payload):
-        result = one(header(payload))
+    def test_date_like_prefix_that_is_not_a_date_falls_back_to_sent_date_and_is_reported(self, payload, title, year):
+        result = one(header(payload, sent="12/08/26, 14:00"))
+
+        entry = result.entries[0]
+        assert (entry.title, entry.year) == (title, year)
+        assert (entry.watched_on, entry.watched_on_source) == (date(2026, 8, 12), "sent_at")
+        assert [a.reason for a in result.anomalies] == [FALLBACK_REASON]
+
+    def test_malformed_date_on_a_line_that_is_not_a_film_is_only_a_film_anomaly(self):
+        result = one(header("0000 - boh"))
 
         assert result.entries == []
-        assert [a.reason for a in result.anomalies] == ["data non valida"]
+        assert [a.reason for a in result.anomalies] == ["non è una visualizzazione"]
 
     @pytest.mark.parametrize(
         ("payload", "title"),

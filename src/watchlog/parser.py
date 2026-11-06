@@ -119,18 +119,18 @@ def _parse_message(message: _Message, result: ParseResult) -> None:
     def anomaly(reason: str) -> None:
         result.anomalies.append(Anomaly(message.line_no, message.author, payload, reason))
 
-    watched_on, source, rest = message.sent_at.date(), "sent_at", payload
+    # Data assente o errata nel corpo: si ripiega sulla data di invio, segnalando l'errata.
+    watched_on, source, rest, wrong_date = message.sent_at.date(), "sent_at", payload, False
     date_match = _BODY_DATE.match(payload)
+    malformed_date = _MALFORMED_DATE.match(payload)
     if date_match:
         day, month, year, rest = date_match.groups()
         try:
             watched_on, source = date(int(year), int(month), int(day)), "body"
         except ValueError:
-            anomaly("data non valida")
-            return
-    elif _MALFORMED_DATE.match(payload):
-        anomaly("data non valida")
-        return
+            wrong_date = True
+    elif malformed_date:
+        rest, wrong_date = payload[malformed_date.end():], True
 
     film = _FILM.match(rest)
     if not film:
@@ -156,6 +156,8 @@ def _parse_message(message: _Message, result: ParseResult) -> None:
             edited=edited,
         )
     )
+    if wrong_date:
+        anomaly("data non valida, usata la data di invio")
 
 
 def _parse_rating(raw: str) -> float | None:
