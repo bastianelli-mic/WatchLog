@@ -57,6 +57,12 @@ class _Message:
     lines: list[str]
 
 
+def parse_film_text(text: str) -> tuple[str, int] | None:
+    """Estrae (titolo, anno) da un testo libero come `Roofman (2025)`."""
+    match = _FILM.match(" ".join(text.split()))
+    return (match.group("title"), int(match.group("year"))) if match else None
+
+
 def parse_export(text: str) -> ParseResult:
     result = ParseResult()
     for message in _group_messages(text):

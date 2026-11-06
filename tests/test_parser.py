@@ -199,3 +199,19 @@ class TestIosFormat:
         text = header("05/07/2026 - Heat (1995)") + "\n" + ios_header("06/07/2026 - Ronin (1998)")
 
         assert [e.title for e in parse_export(text).entries] == ["Heat", "Ronin"]
+
+
+class TestParseFilmText:
+    def test_title_and_year_from_free_text(self):
+        from watchlog.parser import parse_film_text
+
+        assert parse_film_text("Roofman (2025)") == ("Roofman", 2025)
+        assert parse_film_text("Mission: Impossible (Dead Reckoning) (2023)") == (
+            "Mission: Impossible (Dead Reckoning)",
+            2023,
+        )
+
+    def test_text_without_year_is_rejected(self):
+        from watchlog.parser import parse_film_text
+
+        assert parse_film_text("Roofman") is None
