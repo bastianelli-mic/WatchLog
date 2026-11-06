@@ -1,0 +1,10 @@
+# Copia questo file in config/users.yaml (ignorato da git) e compilalo.
+# `whatsapp` è il nome così come compare nell'export della chat.
+# `discord_id` è l'ID numerico dell'utente (Discord, modalità sviluppatore,
+# tasto destro sull'utente, "Copia ID utente"): si può aggiungere in seguito.
+users:
+  - name: mario
+    whatsapp: "Mario Rossi"
+    discord_id: 123456789012345678
+  - name: giuseppe
+    whatsapp: "Giuseppe Verdi"

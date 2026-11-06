@@ -1,0 +1,7 @@
+# Copia questo file in config/corrections.yaml (ignorato da git).
+# Associa a mano `titolo (anno)`, come scritti in chat, al film TMDB giusto.
+# L'id si legge dal report dell'import, oppure dall'URL themoviedb.org/movie/<id>.
+corrections:
+  - title: "Il Sesto Senso"
+    year: 1999
+    tmdb_id: 745

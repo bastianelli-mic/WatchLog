@@ -35,9 +35,34 @@ class Candidate:
         return self.title_it or self.title_en or self.original_title or "?"
 
 
+@dataclass(frozen=True)
+class MovieDetails:
+    tmdb_id: int
+    title: str
+    original_title: str | None
+    year: int | None
+    runtime_minutes: int | None
+    genres: tuple[tuple[int, str], ...]
+    directors: tuple[tuple[int, str], ...]
+
+
 class TmdbClient:
     def __init__(self, fetch: Fetch):
         self._fetch = fetch
+
+    def details(self, tmdb_id: int) -> MovieDetails:
+        """Metadati per le statistiche, in italiano: durata, generi e registi."""
+        data = self._fetch(f"/movie/{tmdb_id}", {"language": "it-IT", "append_to_response": "credits"})
+        crew = data.get("credits", {}).get("crew", [])
+        return MovieDetails(
+            tmdb_id=data["id"],
+            title=data["title"],
+            original_title=data.get("original_title"),
+            year=_year(data.get("release_date")),
+            runtime_minutes=data.get("runtime") or None,
+            genres=tuple((genre["id"], genre["name"]) for genre in data.get("genres", [])),
+            directors=tuple((person["id"], person["name"]) for person in crew if person.get("job") == "Director"),
+        )
 
     def search(self, title: str) -> list[Candidate]:
         """Cerca il titolo in italiano e in inglese, unendo i risultati per id.

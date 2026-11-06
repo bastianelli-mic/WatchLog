@@ -2,6 +2,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from watchlog.config import ConfigError, load_corrections, load_users
+from watchlog.db import Database
+from watchlog.importer import ImportReport, corrections_template, import_chat
 from watchlog.parser import parse_export, parse_film_text
 from watchlog.resolver import Resolution, resolve
 from watchlog.tmdb import TmdbClient, TmdbError, http_fetch, load_api_key
@@ -20,15 +23,27 @@ def main(argv: list[str] | None = None) -> int:
     chat_cmd = commands.add_parser("resolve-chat", help="risolve su TMDB tutti i film distinti di un export")
     chat_cmd.add_argument("chat", type=Path, help="file di export della chat")
 
+    import_cmd = commands.add_parser("import", help="importa nel database le visualizzazioni di un export")
+    import_cmd.add_argument("chat", type=Path, help="file di export della chat")
+    import_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
+    import_cmd.add_argument("--users", type=Path, default=Path("config/users.yaml"))
+    import_cmd.add_argument("--corrections", type=Path, default=Path("config/corrections.yaml"))
+    import_cmd.add_argument("--dry-run", action="store_true", help="simula l'import senza scrivere il database")
+
     args = parser.parse_args(argv)
     if args.command == "parse":
         return _parse(args.chat)
     try:
         if args.command == "resolve":
             return _resolve(args.film)
+        if args.command == "import":
+            return _import(args)
         return _resolve_chat(args.chat)
     except TmdbError as error:
         print(f"Errore TMDB: {error}", file=sys.stderr)
+        return 2
+    except ConfigError as error:
+        print(f"Errore di configurazione: {error}", file=sys.stderr)
         return 2
 
 
@@ -66,6 +81,52 @@ def _resolve_chat(chat: Path) -> int:
         f"{counts['not_found']} non trovati su {len(films)} film distinti"
     )
     return 0
+
+
+def _import(args: argparse.Namespace) -> int:
+    try:
+        text = args.chat.read_text(encoding="utf-8")
+    except OSError as error:
+        print(f"Impossibile leggere {args.chat}: {error.strerror}", file=sys.stderr)
+        return 2
+
+    users = load_users(args.users)
+    corrections = load_corrections(args.corrections)
+    db = Database.in_memory(copy_of=args.db) if args.dry_run else Database.open(args.db)
+    try:
+        db.sync_users(users)
+        report = import_chat(text, db, _make_client(), corrections)
+    finally:
+        db.close()
+
+    _print_import_report(report, args.dry_run)
+    return 0
+
+
+def _print_import_report(report: ImportReport, dry_run: bool) -> None:
+    print("Import (dry-run: nessuna scrittura)" if dry_run else "Import")
+    print(f"visualizzazioni nel file: {report.entries}")
+    print(f"inseriti: {report.inserted}")
+    print(f"già presenti: {report.duplicates}")
+    print(f"nuovi film: {report.new_movies}")
+
+    if report.unmapped_authors:
+        print("\nUtenti non mappati (aggiungili a users.yaml):")
+        for author, count in report.unmapped_authors.items():
+            print(f"  {author}: {count} visualizzazioni escluse")
+
+    if report.unresolved:
+        print(
+            f"\nFilm da risolvere ({len(report.unresolved)} distinti, "
+            f"{report.unresolved_viewings} visualizzazioni escluse).\n"
+            "Controlla ogni riga e copiala in corrections.yaml; le righe commentate vanno prima completate:\n"
+        )
+        print(corrections_template(report.unresolved))
+
+    if report.anomalies:
+        print(f"\nAnomalie del parser ({len(report.anomalies)}):")
+        for found in report.anomalies:
+            print(f"  riga {found.line_no} [{found.author}] {found.reason}: {found.raw}")
 
 
 def _print_resolution(resolution: Resolution) -> None:

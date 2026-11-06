@@ -139,3 +139,50 @@ class TestHttpFetch:
 
         with pytest.raises(TmdbError, match="nessuna rete"):
             tmdb.http_fetch("k")("/search/movie", {"query": "Heat"})
+
+
+DETAILS_RESPONSE = {
+    "id": 7,
+    "title": "Il Menù",
+    "original_title": "The Menu",
+    "release_date": "2022-11-17",
+    "runtime": 107,
+    "genres": [{"id": 35, "name": "Commedia"}, {"id": 27, "name": "Horror"}],
+    "credits": {
+        "crew": [
+            {"id": 1, "name": "Mark Mylod", "job": "Director"},
+            {"id": 2, "name": "Qualcuno", "job": "Producer"},
+        ]
+    },
+}
+
+
+class TestDetails:
+    def test_details_are_requested_in_italian_with_credits(self):
+        calls = []
+
+        def fetch(path, params):
+            calls.append((path, dict(params)))
+            return DETAILS_RESPONSE
+
+        TmdbClient(fetch).details(7)
+
+        assert calls == [("/movie/7", {"language": "it-IT", "append_to_response": "credits"})]
+
+    def test_runtime_genres_and_only_directors_are_extracted(self):
+        details = TmdbClient(lambda path, params: DETAILS_RESPONSE).details(7)
+
+        assert details == tmdb.MovieDetails(
+            tmdb_id=7,
+            title="Il Menù",
+            original_title="The Menu",
+            year=2022,
+            runtime_minutes=107,
+            genres=((35, "Commedia"), (27, "Horror")),
+            directors=((1, "Mark Mylod"),),
+        )
+
+    def test_zero_runtime_means_unknown(self):
+        response = {**DETAILS_RESPONSE, "runtime": 0}
+
+        assert TmdbClient(lambda path, params: response).details(7).runtime_minutes is None

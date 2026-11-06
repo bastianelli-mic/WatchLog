@@ -107,3 +107,68 @@ def test_resolve_chat_reports_each_distinct_film_once(tmp_path, monkeypatch, cap
     assert exit_code == 0
     assert client.searched == ["Roofman", "Sconosciuto"]
     assert "1 risolti, 0 ambigui, 1 non trovati su 2 film distinti" in out
+
+
+def _details(tmdb_id, title, year):
+    from watchlog.tmdb import MovieDetails
+
+    return MovieDetails(tmdb_id, title, title, year, 120, ((18, "Drammatico"),), ((1, "Regista"),))
+
+
+class ImportClient(FakeClient):
+    def details(self, tmdb_id):
+        return _details(tmdb_id, "Roofman", 2025)
+
+
+def _import_setup(tmp_path, monkeypatch):
+    from watchlog.db import Database
+
+    chat = tmp_path / "chat.txt"
+    chat.write_text(
+        "06/07/26, 00:45 - Mario Rossi: 05/07/2026 - Roofman (2025)\n"
+        "06/07/26, 00:46 - Sconosciuto: 05/07/2026 - Roofman (2025)\n"
+        "06/07/26, 00:47 - Mario Rossi: 05/07/2026 - Introvabile (2020)\n",
+        encoding="utf-8",
+    )
+    users = tmp_path / "users.yaml"
+    users.write_text('users:\n  - {name: mario, whatsapp: "Mario Rossi"}\n', encoding="utf-8")
+    monkeypatch.setattr("watchlog.cli._make_client", lambda: ImportClient({"Roofman": [_film(11, 2025, "Roofman")]}))
+    db_path = tmp_path / "data" / "w.sqlite"
+    args = ["import", str(chat), "--db", str(db_path), "--users", str(users)]
+    return args, db_path, Database
+
+
+def test_import_writes_the_database_and_prints_the_report(tmp_path, monkeypatch, capsys):
+    args, db_path, Database = _import_setup(tmp_path, monkeypatch)
+
+    exit_code = main(args)
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "inseriti: 1" in out
+    assert "Sconosciuto" in out
+    assert 'title: "Introvabile", year: 2020' in out
+    assert "corrections:" in out
+    assert [v["user"] for v in Database.open(db_path).list_viewings()] == ["mario"]
+
+
+def test_import_dry_run_reports_the_same_but_writes_nothing(tmp_path, monkeypatch, capsys):
+    args, db_path, _ = _import_setup(tmp_path, monkeypatch)
+
+    exit_code = main(args + ["--dry-run"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "dry-run" in out
+    assert "inseriti: 1" in out
+    assert not db_path.exists()
+
+
+def test_import_without_users_file_fails_clearly(tmp_path, monkeypatch, capsys):
+    args, _, _ = _import_setup(tmp_path, monkeypatch)
+    args[args.index("--users") + 1] = str(tmp_path / "manca.yaml")
+
+    exit_code = main(args)
+
+    assert exit_code == 2
+    assert "manca.yaml" in capsys.readouterr().err
