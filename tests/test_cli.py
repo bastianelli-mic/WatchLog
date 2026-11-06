@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from watchlog.cli import main
 
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_chat.txt"
@@ -264,3 +266,42 @@ def test_import_report_without_suspicious_dates_has_no_section(tmp_path, monkeyp
     main(args + ["--dry-run"])
 
     assert "Date sospette" not in capsys.readouterr().out
+
+
+def test_stats_prints_runtime_streak_weekday_and_busiest_day_sections(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    main(["stats", "--db", str(path)])
+
+    out = capsys.readouterr().out
+    assert "durata media: 2 h 0 min" in out
+    assert "film più lungo: Heat (2 h 0 min)" in out
+    assert "film più corto: Heat (2 h 0 min)" in out
+    assert "serie consecutiva più lunga: 2 giorni (dal 2026-07-05 al 2026-07-06)" in out
+    assert "Giorni della settimana:" in out
+    assert "Domenica: 1" in out
+    assert "Lunedì: 1" in out
+    assert "Giorni con più film:" in out
+    assert "2026-07-05: 1" in out
+    assert "2026-07: 3 visualizzazioni, 6 h 0 min" in out
+
+
+def test_stats_period_filters_and_is_shown_in_the_title(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    exit_code = main(["stats", "--db", str(path), "--dal", "2026-07-06", "--al", "2026-07-31"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Statistiche: gruppo (dal 2026-07-06 al 2026-07-31)" in out
+    assert "visualizzazioni: 2" in out
+
+
+def test_stats_invalid_period_date_is_rejected(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["stats", "--db", str(path), "--dal", "boh"])
+
+    assert exit_info.value.code == 2
+    assert "boh" in capsys.readouterr().err

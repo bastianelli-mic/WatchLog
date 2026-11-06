@@ -1,5 +1,6 @@
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 from watchlog.config import ConfigError, load_corrections, load_users
@@ -34,12 +35,14 @@ def main(argv: list[str] | None = None) -> int:
     stats_cmd = commands.add_parser("stats", help="statistiche del gruppo, o di un utente con --user")
     stats_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
     stats_cmd.add_argument("--user", help="nome interno dell'utente (come in users.yaml)")
+    stats_cmd.add_argument("--dal", type=_iso_date, help="solo visioni da questa data (AAAA-MM-GG), inclusa")
+    stats_cmd.add_argument("--al", type=_iso_date, help="solo visioni fino a questa data (AAAA-MM-GG), inclusa")
 
     args = parser.parse_args(argv)
     if args.command == "parse":
         return _parse(args.chat)
     if args.command == "stats":
-        return _stats(args.db, args.user)
+        return _stats(args.db, args.user, args.dal, args.al)
     try:
         if args.command == "resolve":
             return _resolve(args.film)
@@ -110,25 +113,42 @@ def _import(args: argparse.Namespace) -> int:
     return 0
 
 
-def _stats(db_path: Path, user: str | None) -> int:
+def _stats(db_path: Path, user: str | None, since: date | None, until: date | None) -> int:
     if not db_path.is_file():
         print(f"Database non trovato: {db_path}", file=sys.stderr)
         return 2
     db = Database.open(db_path)
     try:
-        stats = compute_stats(db, user=user)
-        extras = group_extras(db) if user is None else None
+        stats = compute_stats(db, user=user, since=since, until=until)
+        extras = group_extras(db, since=since, until=until) if user is None else None
     except UnknownUser as error:
         print(error, file=sys.stderr)
         return 2
     finally:
         db.close()
 
-    print(f"Statistiche: {user or 'gruppo'}")
+    print(f"Statistiche: {user or 'gruppo'}{_period(since, until)}")
     _print_stats(stats)
     if extras:
         _print_group_extras(extras)
     return 0
+
+
+def _iso_date(text: str) -> date:
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"data non valida: {text!r} (usa AAAA-MM-GG)") from None
+
+
+def _period(since: date | None, until: date | None) -> str:
+    if since and until:
+        return f" (dal {since} al {until})"
+    if since:
+        return f" (dal {since})"
+    if until:
+        return f" (fino al {until})"
+    return ""
 
 
 def _duration(minutes: int) -> str:
@@ -149,6 +169,14 @@ def _print_stats(stats: Stats) -> None:
     )
     missing = f" ({stats.viewings_without_runtime} visualizzazioni senza durata non incluse)"
     print(f"tempo totale: {_duration(stats.runtime_minutes)}{missing if stats.viewings_without_runtime else ''}")
+    if stats.average_runtime_minutes is not None:
+        print(f"durata media: {_duration(stats.average_runtime_minutes)}")
+        print(f"film più lungo: {stats.longest_film.title} ({_duration(stats.longest_film.minutes)})")
+        print(f"film più corto: {stats.shortest_film.title} ({_duration(stats.shortest_film.minutes)})")
+    if stats.longest_streak is not None:
+        streak = stats.longest_streak
+        span = f"dal {streak.start} al {streak.end}" if streak.days > 1 else streak.start
+        print(f"serie consecutiva più lunga: {streak.days} {'giorni' if streak.days != 1 else 'giorno'} ({span})")
     if stats.average_rating is None:
         print("voto medio: nessuna visualizzazione votata")
     else:
@@ -158,7 +186,14 @@ def _print_stats(stats: Stats) -> None:
     _section("Generi più visti:", [f"{name}: {count}" for name, count in stats.top_genres])
     _section("Registi più visti:", [f"{name}: {count}" for name, count in stats.top_directors])
     _section("Per decennio di uscita:", [f"{decade}-{decade + 9}: {count}" for decade, count in stats.decades])
-    _section("Visualizzazioni per mese:", [f"{month}: {count}" for month, count in stats.per_month])
+    _section(
+        "Visualizzazioni per mese:",
+        [f"{month}: {count} visualizzazioni, {_duration(minutes)}" for month, count, minutes in stats.per_month],
+    )
+    if any(stats.weekdays):
+        names = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+        _section("Giorni della settimana:", [f"{name}: {count}" for name, count in zip(names, stats.weekdays)])
+    _section("Giorni con più film:", [f"{day}: {count} film" for day, count in stats.busiest_days])
     _section("Film rivisti più volte:", [f"{r.user}: {r.title} ×{r.times}" for r in stats.most_rewatched])
 
 
