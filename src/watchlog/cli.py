@@ -7,6 +7,7 @@ from watchlog.db import Database
 from watchlog.importer import ImportReport, corrections_template, import_chat
 from watchlog.parser import parse_export, parse_film_text
 from watchlog.resolver import Resolution, resolve
+from watchlog.stats import GroupExtras, Stats, UnknownUser, compute_stats, group_extras
 from watchlog.tmdb import TmdbClient, TmdbError, http_fetch, load_api_key
 
 
@@ -30,9 +31,15 @@ def main(argv: list[str] | None = None) -> int:
     import_cmd.add_argument("--corrections", type=Path, default=Path("config/corrections.yaml"))
     import_cmd.add_argument("--dry-run", action="store_true", help="simula l'import senza scrivere il database")
 
+    stats_cmd = commands.add_parser("stats", help="statistiche del gruppo, o di un utente con --user")
+    stats_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
+    stats_cmd.add_argument("--user", help="nome interno dell'utente (come in users.yaml)")
+
     args = parser.parse_args(argv)
     if args.command == "parse":
         return _parse(args.chat)
+    if args.command == "stats":
+        return _stats(args.db, args.user)
     try:
         if args.command == "resolve":
             return _resolve(args.film)
@@ -101,6 +108,75 @@ def _import(args: argparse.Namespace) -> int:
 
     _print_import_report(report, args.dry_run)
     return 0
+
+
+def _stats(db_path: Path, user: str | None) -> int:
+    if not db_path.is_file():
+        print(f"Database non trovato: {db_path}", file=sys.stderr)
+        return 2
+    db = Database.open(db_path)
+    try:
+        stats = compute_stats(db, user=user)
+        extras = group_extras(db) if user is None else None
+    except UnknownUser as error:
+        print(error, file=sys.stderr)
+        return 2
+    finally:
+        db.close()
+
+    print(f"Statistiche: {user or 'gruppo'}")
+    _print_stats(stats)
+    if extras:
+        _print_group_extras(extras)
+    return 0
+
+
+def _duration(minutes: int) -> str:
+    return f"{minutes // 60} h {minutes % 60} min"
+
+
+def _section(title: str, rows: list[str]) -> None:
+    if rows:
+        print(f"\n{title}")
+        for row in rows:
+            print(f"  {row}")
+
+
+def _print_stats(stats: Stats) -> None:
+    print(
+        f"visualizzazioni: {stats.viewings}  "
+        f"(film distinti: {stats.distinct_films}, rivisioni: {stats.rewatches})"
+    )
+    missing = f" ({stats.viewings_without_runtime} visualizzazioni senza durata non incluse)"
+    print(f"tempo totale: {_duration(stats.runtime_minutes)}{missing if stats.viewings_without_runtime else ''}")
+    if stats.average_rating is None:
+        print("voto medio: nessuna visualizzazione votata")
+    else:
+        average = f"{stats.average_rating:.1f}".replace(".", ",")
+        print(f"voto medio: {average} ({stats.rated_viewings} visualizzazioni votate)")
+
+    _section("Generi più visti:", [f"{name}: {count}" for name, count in stats.top_genres])
+    _section("Registi più visti:", [f"{name}: {count}" for name, count in stats.top_directors])
+    _section("Per decennio di uscita:", [f"{decade}-{decade + 9}: {count}" for decade, count in stats.decades])
+    _section("Visualizzazioni per mese:", [f"{month}: {count}" for month, count in stats.per_month])
+    _section("Film rivisti più volte:", [f"{r.user}: {r.title} ×{r.times}" for r in stats.most_rewatched])
+
+
+def _print_group_extras(extras: GroupExtras) -> None:
+    _section(
+        "Classifica utenti:",
+        [f"{u.name}: {u.viewings} visualizzazioni, {_duration(u.runtime_minutes)}" for u in extras.users],
+    )
+    _section(
+        "Film più visti dal gruppo:",
+        [f"{f.title}: {f.views} visualizzazioni ({f.viewers} utenti)" for f in extras.most_watched],
+    )
+    shown = extras.seen_by_all[:10]
+    hidden = len(extras.seen_by_all) - len(shown)
+    _section(
+        f"Film visti da tutti gli utenti ({len(extras.seen_by_all)}):",
+        shown + ([f"… e altri {hidden}"] if hidden else []),
+    )
 
 
 def _print_import_report(report: ImportReport, dry_run: bool) -> None:

@@ -170,6 +170,10 @@ class Database:
         )
         return [dict(row) for row in rows]
 
+    def query(self, sql: str, parameters=()) -> list[dict]:
+        """Esegue una SELECT e restituisce le righe come dizionari (usata dalle statistiche)."""
+        return [dict(row) for row in self._conn.execute(sql, parameters)]
+
     def _scalar(self, sql: str, parameter):
         row = self._conn.execute(sql, (parameter,)).fetchone()
         return row[0] if row else None

@@ -172,3 +172,74 @@ def test_import_without_users_file_fails_clearly(tmp_path, monkeypatch, capsys):
 
     assert exit_code == 2
     assert "manca.yaml" in capsys.readouterr().err
+
+
+def _seeded_stats_db(tmp_path):
+    from datetime import date, datetime
+
+    from watchlog.config import UserConfig
+    from watchlog.db import Database
+
+    path = tmp_path / "w.sqlite"
+    db = Database.open(path)
+    db.sync_users([UserConfig("mario", "Mario Rossi", None), UserConfig("franco", "Franco Rossi", None)])
+    db.save_movie(_details(1, "Heat", 1995))
+    for index, (user, day) in enumerate([("Mario Rossi", 5), ("Mario Rossi", 9), ("Franco Rossi", 6)]):
+        db.add_viewing(
+            user_id=db.user_id_by_whatsapp(user),
+            tmdb_id=1,
+            watched_on=date(2026, 7, day),
+            watched_on_source="body",
+            rating=4.5 if index == 0 else None,
+            sent_at=datetime(2026, 7, 20),
+            source_ref=f"r{index}",
+        )
+    db.commit()
+    db.close()
+    return path
+
+
+def test_stats_prints_group_numbers_and_extras(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    exit_code = main(["stats", "--db", str(path)])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Statistiche: gruppo" in out
+    assert "visualizzazioni: 3" in out
+    assert "film distinti: 1" in out
+    assert "rivisioni: 1" in out
+    assert "6 h 0 min" in out
+    assert "voto medio: 4,5" in out
+    assert "Generi più visti" in out
+    assert "Classifica utenti" in out
+    assert "mario" in out
+
+
+def test_stats_for_a_single_user_has_no_group_sections(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    exit_code = main(["stats", "--db", str(path), "--user", "franco"])
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Statistiche: franco" in out
+    assert "visualizzazioni: 1" in out
+    assert "Classifica utenti" not in out
+
+
+def test_stats_unknown_user_fails_clearly(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    exit_code = main(["stats", "--db", str(path), "--user", "nessuno"])
+
+    assert exit_code == 2
+    assert "nessuno" in capsys.readouterr().err
+
+
+def test_stats_without_a_database_fails_clearly(tmp_path, capsys):
+    exit_code = main(["stats", "--db", str(tmp_path / "manca.sqlite")])
+
+    assert exit_code == 2
+    assert "manca.sqlite" in capsys.readouterr().err
