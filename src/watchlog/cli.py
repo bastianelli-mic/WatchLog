@@ -7,6 +7,7 @@ from watchlog.bot import sync_users
 from watchlog.config import ConfigError, load_corrections, load_discord_config, load_discord_token, load_users
 from watchlog.db import Database
 from watchlog.importer import ImportReport, corrections_template, import_chat
+from watchlog.live import LiveService
 from watchlog.parser import parse_export, parse_film_text
 from watchlog.resolver import Resolution, resolve
 from watchlog.report import render_stats
@@ -128,7 +129,13 @@ def _bot(args: argparse.Namespace) -> int:
     config = load_discord_config(args.discord_config)
     token = load_discord_token()
     sync_users(args.db, args.users)  # i nomi in users.yaml diventano quelli dell'autocompletamento
-    discord_app.run(token, config, args.db)
+    live = None
+    if config.input_channel_id is not None:
+        try:
+            live = LiveService(args.db, _make_client())
+        except TmdbError as error:
+            print(f"Inserimento delle visioni disattivato: {error}", file=sys.stderr)
+    discord_app.run(token, config, args.db, live)
     return 0
 
 

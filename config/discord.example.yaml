@@ -3,4 +3,4 @@
 # Il token del bot non va qui: sta in local/discord_token.
 guild_id: 123456789012345678         # server
 stats_channel_id: 123456789012345678 # canale dove si lancia /stats
-input_channel_id: 123456789012345678 # canale delle visioni: non ancora usato, servirà all'inserimento live
+input_channel_id: 123456789012345678 # canale delle visioni: se manca, l'inserimento dal bot è spento

@@ -141,3 +141,19 @@ def test_sync_users_renames_an_existing_user_keeping_id_and_viewings(tmp_path):
     assert db.user_id_by_discord("555") == user_id
     assert [v["user"] for v in db.list_viewings()] == ["Bastio"]
     assert db.query("SELECT COUNT(*) AS n FROM users")[0]["n"] == 1
+
+
+def test_same_day_check_matches_user_film_and_date_and_ignores_deleted(tmp_path):
+    db = Database.open(tmp_path / "w.sqlite")
+    db.sync_users([MARIO, UserConfig("franco", "Franco Rossi", None)])
+    db.save_movie(heat())
+    mario, franco = db.user_id_by_whatsapp("Mario Rossi"), db.user_id_by_whatsapp("Franco Rossi")
+    add(db, mario)
+
+    assert db.has_viewing_same_day(mario, 949, date(2026, 7, 5)) is True
+    assert db.has_viewing_same_day(mario, 949, date(2026, 7, 6)) is False
+    assert db.has_viewing_same_day(mario, 1, date(2026, 7, 5)) is False
+    assert db.has_viewing_same_day(franco, 949, date(2026, 7, 5)) is False
+
+    db.query("UPDATE viewing SET deleted_at = '2026-08-01'")
+    assert db.has_viewing_same_day(mario, 949, date(2026, 7, 5)) is False

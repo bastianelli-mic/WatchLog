@@ -25,6 +25,7 @@ class UserConfig:
 class DiscordConfig:
     guild_id: int
     stats_channel_id: int
+    input_channel_id: int | None = None  # senza, l'inserimento delle visioni dal bot è spento
 
 
 DEFAULT_DISCORD_TOKEN_FILE = Path("local/discord_token")
@@ -68,7 +69,7 @@ def load_corrections(path: Path) -> Corrections:
 
 
 def load_discord_config(path: Path) -> DiscordConfig:
-    """Legge ID del server e del canale delle statistiche. Le altre chiavi del file vengono ignorate."""
+    """Legge ID del server e dei canali (statistiche, e facoltativamente visioni). Le altre chiavi vengono ignorate."""
     data = _read_yaml(path) or {}
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: atteso un elenco di chiavi (guild_id, stats_channel_id)")
@@ -77,10 +78,16 @@ def load_discord_config(path: Path) -> DiscordConfig:
         value = data.get(key)
         if value is None:
             raise ConfigError(f"{path}: manca '{key}'")
-        if isinstance(value, bool) or not (isinstance(value, int) or str(value).isdigit()):
-            raise ConfigError(f"{path}: '{key}' deve essere un numero (ID Discord)")
-        ids[key] = int(value)
+        ids[key] = _discord_id(path, key, value)
+    if data.get("input_channel_id") is not None:
+        ids["input_channel_id"] = _discord_id(path, "input_channel_id", data["input_channel_id"])
     return DiscordConfig(**ids)
+
+
+def _discord_id(path: Path, key: str, value) -> int:
+    if isinstance(value, bool) or not (isinstance(value, int) or str(value).isdigit()):
+        raise ConfigError(f"{path}: '{key}' deve essere un numero (ID Discord)")
+    return int(value)
 
 
 def load_discord_token(

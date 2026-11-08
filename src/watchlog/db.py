@@ -134,6 +134,13 @@ class Database:
     def has_viewing(self, source_ref: str) -> bool:
         return self._scalar("SELECT 1 FROM viewing WHERE source_ref = ?", source_ref) is not None
 
+    def has_viewing_same_day(self, user_id: int, tmdb_id: int, watched_on: date) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM viewing WHERE user_id = ? AND movie_id = ? AND watched_on = ? AND deleted_at IS NULL",
+            (user_id, tmdb_id, watched_on.isoformat()),
+        ).fetchone()
+        return row is not None
+
     def add_viewing(
         self,
         *,

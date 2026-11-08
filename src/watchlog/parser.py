@@ -21,6 +21,7 @@ _BODY_DATE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})\s+-\s+(.*)$")
 # Prefisso che sembra una data ma non lo è (`0000`, `2203/2026`, `05/07/26`): non va letto come titolo.
 # Un numero semplice come `2001 - Odissea nello spazio` resta invece un titolo.
 _MALFORMED_DATE = re.compile(r"^(?:0+|\d+(?:/\d+)+)\s+-\s+")
+WRONG_DATE_REASON = "data non valida, usata la data di invio"
 # Testi che WhatsApp mette al posto di un messaggio cancellato.
 _DELETED = {
     "Hai eliminato questo messaggio.",
@@ -72,6 +73,14 @@ def parse_film_text(text: str) -> tuple[str, int] | None:
     """Estrae (titolo, anno) da un testo libero come `Roofman (2025)`."""
     match = _FILM.match(" ".join(text.split()))
     return (match.group("title"), int(match.group("year"))) if match else None
+
+
+def parse_line(author: str, sent_at: datetime, text: str) -> ParseResult:
+    """Interpreta il testo di un solo messaggio (per esempio dal bot) come una riga d'export."""
+    result = ParseResult()
+    lines = text.translate(_STRIP_INVISIBLE).splitlines() or [""]
+    _parse_message(_Message(line_no=1, sent_at=sent_at, author=author, lines=lines), result)
+    return result
 
 
 def parse_export(text: str) -> ParseResult:
@@ -159,7 +168,7 @@ def _parse_message(message: _Message, result: ParseResult) -> None:
         )
     )
     if wrong_date:
-        anomaly("data non valida, usata la data di invio")
+        anomaly(WRONG_DATE_REASON)
 
 
 def _parse_rating(raw: str) -> float | None:

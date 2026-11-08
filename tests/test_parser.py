@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from watchlog.parser import parse_export
+from watchlog.parser import WRONG_DATE_REASON, parse_export, parse_line
 
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_chat.txt"
 FALLBACK_REASON = "data non valida, usata la data di invio"
@@ -284,3 +284,35 @@ class TestLineNumber:
         )
 
         assert [e.line_no for e in parse_export(text).entries] == [1, 2, 4]
+
+
+class TestParseLine:
+    SENT = datetime(2026, 7, 6, 0, 45)
+
+    def test_a_single_message_text_is_parsed_like_an_export_line(self):
+        entry = parse_line("Mario", self.SENT, "05/07/2026 - Heat (1995) [4.5]").entries[0]
+
+        assert (entry.author, entry.sent_at) == ("Mario", self.SENT)
+        assert (entry.title, entry.year, entry.rating, entry.watched_on) == ("Heat", 1995, 4.5, date(2026, 7, 5))
+
+    def test_missing_date_falls_back_to_the_sent_date(self):
+        entry = parse_line("Mario", self.SENT, "Heat (1995)").entries[0]
+
+        assert (entry.watched_on, entry.watched_on_source) == (date(2026, 7, 6), "sent_at")
+
+    def test_wrong_date_is_reported_with_the_shared_reason(self):
+        result = parse_line("Mario", self.SENT, "0000 - Heat (1995)")
+
+        assert len(result.entries) == 1
+        assert [a.reason for a in result.anomalies] == [WRONG_DATE_REASON]
+
+    def test_chatter_is_an_anomaly(self):
+        result = parse_line("Mario", self.SENT, "ciao a tutti")
+
+        assert result.entries == []
+        assert [a.reason for a in result.anomalies] == ["non è una visualizzazione"]
+
+    def test_multiline_text_is_joined(self):
+        entry = parse_line("Mario", self.SENT, "05/07/2026 - Good Fortune\n(2025)").entries[0]
+
+        assert (entry.title, entry.year) == ("Good Fortune", 2025)

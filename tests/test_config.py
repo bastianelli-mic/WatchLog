@@ -115,17 +115,31 @@ corrections:
 
 
 class TestDiscordConfig:
-    def test_guild_and_stats_channel_are_read_and_unknown_keys_ignored(self, tmp_path):
+    def test_guild_and_channels_are_read_and_unknown_keys_ignored(self, tmp_path):
         path = write(
             tmp_path,
             """
 guild_id: 1557790947973140623
 stats_channel_id: 1568998046593712178
 input_channel_id: 1568997973017370816
+colore_preferito: blu
 """,
         )
 
-        assert load_discord_config(path) == DiscordConfig(1557790947973140623, 1568998046593712178)
+        assert load_discord_config(path) == DiscordConfig(
+            1557790947973140623, 1568998046593712178, 1568997973017370816
+        )
+
+    def test_input_channel_is_optional(self, tmp_path):
+        path = write(tmp_path, "guild_id: 1\nstats_channel_id: 2\n")
+
+        assert load_discord_config(path) == DiscordConfig(1, 2, None)
+
+    def test_input_channel_must_be_an_integer_when_present(self, tmp_path):
+        path = write(tmp_path, "guild_id: 1\nstats_channel_id: 2\ninput_channel_id: abc\n")
+
+        with pytest.raises(ConfigError, match="input_channel_id"):
+            load_discord_config(path)
 
     def test_missing_file_is_a_config_error_naming_the_path(self, tmp_path):
         with pytest.raises(ConfigError, match="discord.yaml"):
