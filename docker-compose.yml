@@ -8,3 +8,4 @@ services:
       - ./data:/app/data
       - ./config:/app/config:ro
       - ./local/discord_token:/app/local/discord_token:ro
+      - ./local/tmdb_api_key:/app/local/tmdb_api_key:ro

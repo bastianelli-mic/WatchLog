@@ -3,7 +3,7 @@
 Registro dei film visti da un gruppo di amici, con le statistiche per utente e di gruppo.
 Oggi si alimenta importando l'export di una chat WhatsApp, che contiene un messaggio per ogni visione.
 Per ogni film cerca i metadati su TMDB (durata, generi, regista) e salva la visione per l'utente che l'ha scritta.
-Un bot Discord risponde al comando `/stats` con le statistiche; l'inserimento delle visioni dal bot è il passo successivo.
+Un bot Discord registra le visioni scritte in un canale e risponde al comando `/stats` con le statistiche.
 
 Tutti i comandi si lanciano con `watchlog` e hanno l'opzione `--help`, per esempio `watchlog stats --help`.
 
@@ -142,10 +142,21 @@ watchlog bot
 ```
 
 Collega il bot al server e resta in ascolto finché non lo fermi con Ctrl+C.
-Serve il token in `local/discord_token` e `config/discord.yaml` con gli ID del server e del canale delle statistiche.
+Serve il token in `local/discord_token` e `config/discord.yaml` con gli ID del server, del canale delle statistiche e, per l'inserimento, del canale delle visioni.
+L'inserimento usa anche la chiave TMDB: se manca la chiave, o manca `input_channel_id`, il bot parte lo stesso e disattiva solo l'inserimento.
 Opzioni: `--db`, `--discord-config` e `--users` cambiano i percorsi predefiniti.
 All'avvio il bot applica `config/users.yaml` al database: i nomi interni e i `discord_id` modificati nel file diventano effettivi riavviando il bot, senza rifare l'import.
 I nomi mostrati nel completamento del parametro `utente` sono i nomi interni di `users.yaml`, quindi per usare i nomi di Discord basta scriverli lì.
+
+Nel canale delle visioni si scrive un film per messaggio, nello stesso formato della chat WhatsApp: `05/07/2026 - Heat (1995)`, con voto facoltativo `[4.5]`.
+La data può mancare: si usa quella del messaggio. L'utente che scrive deve avere il `discord_id` in `config/users.yaml`.
+Il bot risponde così:
+- ✅ e un messaggio con ciò che ha salvato, indicando la data usata.
+- Dei bottoni, se il film è ambiguo o poco sicuro: può scegliere solo chi ha scritto, entro 3 minuti. «Nessuno di questi» annulla.
+- Due bottoni di conferma, se hai già registrato lo stesso film nello stesso giorno.
+- ❌ e un messaggio, se non trova il film o il voto non è valido.
+- ❓, senza testo, se il messaggio non ha il formato di una visione: nel canale si può anche chiacchierare.
+Un messaggio modificato o cancellato dopo la registrazione non cambia nulla.
 
 Nel canale delle statistiche si usa il comando `/stats`, con tre parametri facoltativi:
 - `utente`: il nome interno di un utente, con completamento automatico. Senza, il report è del gruppo.
