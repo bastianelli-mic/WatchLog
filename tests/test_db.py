@@ -126,3 +126,18 @@ def test_in_memory_copy_does_not_touch_the_file(tmp_path):
 
 def test_in_memory_without_source_starts_empty():
     assert Database.in_memory().list_viewings() == []
+
+
+def test_sync_users_renames_an_existing_user_keeping_id_and_viewings(tmp_path):
+    db = Database.open(tmp_path / "w.sqlite")
+    db.sync_users([MARIO])
+    db.save_movie(heat())
+    user_id = db.user_id_by_whatsapp("Mario Rossi")
+    add(db, user_id)
+
+    db.sync_users([UserConfig("Bastio", "Mario Rossi", "555")])
+
+    assert db.user_id_by_whatsapp("Mario Rossi") == user_id
+    assert db.user_id_by_discord("555") == user_id
+    assert [v["user"] for v in db.list_viewings()] == ["Bastio"]
+    assert db.query("SELECT COUNT(*) AS n FROM users")[0]["n"] == 1

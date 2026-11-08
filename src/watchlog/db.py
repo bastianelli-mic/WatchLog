@@ -80,11 +80,11 @@ class Database:
         self._conn.close()
 
     def sync_users(self, users: list[UserConfig]) -> None:
+        """Allinea gli utenti al file di configurazione. Il nome WhatsApp è la chiave: nome interno e ID Discord si possono cambiare."""
         for user in users:
             self._conn.execute(
                 "INSERT INTO users (name, whatsapp_name, discord_id) VALUES (?, ?, ?) "
-                "ON CONFLICT(name) DO UPDATE SET whatsapp_name = excluded.whatsapp_name, "
-                "discord_id = excluded.discord_id",
+                "ON CONFLICT(whatsapp_name) DO UPDATE SET name = excluded.name, discord_id = excluded.discord_id",
                 (user.name, user.whatsapp, user.discord_id),
             )
 

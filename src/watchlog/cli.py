@@ -3,12 +3,14 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from watchlog.config import ConfigError, load_corrections, load_users
+from watchlog.bot import sync_users
+from watchlog.config import ConfigError, load_corrections, load_discord_config, load_discord_token, load_users
 from watchlog.db import Database
 from watchlog.importer import ImportReport, corrections_template, import_chat
 from watchlog.parser import parse_export, parse_film_text
 from watchlog.resolver import Resolution, resolve
-from watchlog.stats import GroupExtras, Stats, UnknownUser, compute_stats, group_extras
+from watchlog.report import render_stats
+from watchlog.stats import UnknownUser, compute_stats, group_extras
 from watchlog.tmdb import TmdbClient, TmdbError, http_fetch, load_api_key
 
 
@@ -38,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     stats_cmd.add_argument("--dal", type=_iso_date, help="solo visioni da questa data (AAAA-MM-GG), inclusa")
     stats_cmd.add_argument("--al", type=_iso_date, help="solo visioni fino a questa data (AAAA-MM-GG), inclusa")
 
+    bot_cmd = commands.add_parser("bot", help="avvia il bot Discord (comando /stats)")
+    bot_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
+    bot_cmd.add_argument("--discord-config", type=Path, default=Path("config/discord.yaml"))
+    bot_cmd.add_argument("--users", type=Path, default=Path("config/users.yaml"))
+
     args = parser.parse_args(argv)
     if args.command == "parse":
         return _parse(args.chat)
@@ -48,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
             return _resolve(args.film)
         if args.command == "import":
             return _import(args)
+        if args.command == "bot":
+            return _bot(args)
         return _resolve_chat(args.chat)
     except TmdbError as error:
         print(f"Errore TMDB: {error}", file=sys.stderr)
@@ -113,6 +122,16 @@ def _import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _bot(args: argparse.Namespace) -> int:
+    from watchlog import discord_app  # import tardivo: gli altri comandi non ne hanno bisogno
+
+    config = load_discord_config(args.discord_config)
+    token = load_discord_token()
+    sync_users(args.db, args.users)  # i nomi in users.yaml diventano quelli dell'autocompletamento
+    discord_app.run(token, config, args.db)
+    return 0
+
+
 def _stats(db_path: Path, user: str | None, since: date | None, until: date | None) -> int:
     if not db_path.is_file():
         print(f"Database non trovato: {db_path}", file=sys.stderr)
@@ -127,10 +146,7 @@ def _stats(db_path: Path, user: str | None, since: date | None, until: date | No
     finally:
         db.close()
 
-    print(f"Statistiche: {user or 'gruppo'}{_period(since, until)}")
-    _print_stats(stats)
-    if extras:
-        _print_group_extras(extras)
+    print("\n\n".join(render_stats(stats, extras, user, since, until)))
     return 0
 
 
@@ -139,79 +155,6 @@ def _iso_date(text: str) -> date:
         return date.fromisoformat(text)
     except ValueError:
         raise argparse.ArgumentTypeError(f"data non valida: {text!r} (usa AAAA-MM-GG)") from None
-
-
-def _period(since: date | None, until: date | None) -> str:
-    if since and until:
-        return f" (dal {since} al {until})"
-    if since:
-        return f" (dal {since})"
-    if until:
-        return f" (fino al {until})"
-    return ""
-
-
-def _duration(minutes: int) -> str:
-    return f"{minutes // 60} h {minutes % 60} min"
-
-
-def _section(title: str, rows: list[str]) -> None:
-    if rows:
-        print(f"\n{title}")
-        for row in rows:
-            print(f"  {row}")
-
-
-def _print_stats(stats: Stats) -> None:
-    print(
-        f"visualizzazioni: {stats.viewings}  "
-        f"(film distinti: {stats.distinct_films}, rivisioni: {stats.rewatches})"
-    )
-    missing = f" ({stats.viewings_without_runtime} visualizzazioni senza durata non incluse)"
-    print(f"tempo totale: {_duration(stats.runtime_minutes)}{missing if stats.viewings_without_runtime else ''}")
-    if stats.average_runtime_minutes is not None:
-        print(f"durata media: {_duration(stats.average_runtime_minutes)}")
-        print(f"film più lungo: {stats.longest_film.title} ({_duration(stats.longest_film.minutes)})")
-        print(f"film più corto: {stats.shortest_film.title} ({_duration(stats.shortest_film.minutes)})")
-    if stats.longest_streak is not None:
-        streak = stats.longest_streak
-        span = f"dal {streak.start} al {streak.end}" if streak.days > 1 else streak.start
-        print(f"serie consecutiva più lunga: {streak.days} {'giorni' if streak.days != 1 else 'giorno'} ({span})")
-    if stats.average_rating is None:
-        print("voto medio: nessuna visualizzazione votata")
-    else:
-        average = f"{stats.average_rating:.1f}".replace(".", ",")
-        print(f"voto medio: {average} ({stats.rated_viewings} visualizzazioni votate)")
-
-    _section("Generi più visti:", [f"{name}: {count}" for name, count in stats.top_genres])
-    _section("Registi più visti:", [f"{name}: {count}" for name, count in stats.top_directors])
-    _section("Per decennio di uscita:", [f"{decade}-{decade + 9}: {count}" for decade, count in stats.decades])
-    _section(
-        "Visualizzazioni per mese:",
-        [f"{month}: {count} visualizzazioni, {_duration(minutes)}" for month, count, minutes in stats.per_month],
-    )
-    if any(stats.weekdays):
-        names = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
-        _section("Giorni della settimana:", [f"{name}: {count}" for name, count in zip(names, stats.weekdays)])
-    _section("Giorni con più film:", [f"{day}: {count} film" for day, count in stats.busiest_days])
-    _section("Film rivisti più volte:", [f"{r.user}: {r.title} ×{r.times}" for r in stats.most_rewatched])
-
-
-def _print_group_extras(extras: GroupExtras) -> None:
-    _section(
-        "Classifica utenti:",
-        [f"{u.name}: {u.viewings} visualizzazioni, {_duration(u.runtime_minutes)}" for u in extras.users],
-    )
-    _section(
-        "Film più visti dal gruppo:",
-        [f"{f.title}: {f.views} visualizzazioni ({f.viewers} utenti)" for f in extras.most_watched],
-    )
-    shown = extras.seen_by_all[:10]
-    hidden = len(extras.seen_by_all) - len(shown)
-    _section(
-        f"Film visti da tutti gli utenti ({len(extras.seen_by_all)}):",
-        shown + ([f"… e altri {hidden}"] if hidden else []),
-    )
 
 
 def _print_import_report(report: ImportReport, dry_run: bool) -> None:

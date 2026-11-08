@@ -8,3 +8,4 @@ local/
 data/
 config/users.yaml
 config/corrections.yaml
+config/discord.yaml

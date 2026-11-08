@@ -1,6 +1,14 @@
 import pytest
 
-from watchlog.config import ConfigError, UserConfig, load_corrections, load_users
+from watchlog.config import (
+    ConfigError,
+    DiscordConfig,
+    UserConfig,
+    load_corrections,
+    load_discord_config,
+    load_discord_token,
+    load_users,
+)
 
 
 def write(tmp_path, text, name="cfg.yaml"):
@@ -104,3 +112,64 @@ corrections:
 
         with pytest.raises(ConfigError, match="Heat"):
             load_corrections(path)
+
+
+class TestDiscordConfig:
+    def test_guild_and_stats_channel_are_read_and_unknown_keys_ignored(self, tmp_path):
+        path = write(
+            tmp_path,
+            """
+guild_id: 1557790947973140623
+stats_channel_id: 1568998046593712178
+input_channel_id: 1568997973017370816
+""",
+        )
+
+        assert load_discord_config(path) == DiscordConfig(1557790947973140623, 1568998046593712178)
+
+    def test_missing_file_is_a_config_error_naming_the_path(self, tmp_path):
+        with pytest.raises(ConfigError, match="discord.yaml"):
+            load_discord_config(tmp_path / "discord.yaml")
+
+    def test_missing_file_suggests_copying_the_example(self, tmp_path):
+        (tmp_path / "discord.example.yaml").write_text("guild_id: 1\n")
+
+        with pytest.raises(ConfigError, match="cp "):
+            load_discord_config(tmp_path / "discord.yaml")
+
+    @pytest.mark.parametrize("missing", ["guild_id", "stats_channel_id"])
+    def test_required_keys_are_named_when_missing(self, tmp_path, missing):
+        values = {"guild_id": 1, "stats_channel_id": 2}
+        del values[missing]
+        path = write(tmp_path, "".join(f"{key}: {value}\n" for key, value in values.items()))
+
+        with pytest.raises(ConfigError, match=missing):
+            load_discord_config(path)
+
+    def test_ids_must_be_integers(self, tmp_path):
+        path = write(tmp_path, "guild_id: abc\nstats_channel_id: 2\n")
+
+        with pytest.raises(ConfigError, match="guild_id"):
+            load_discord_config(path)
+
+    def test_empty_file_names_the_first_missing_key(self, tmp_path):
+        with pytest.raises(ConfigError, match="guild_id"):
+            load_discord_config(write(tmp_path, ""))
+
+
+class TestDiscordToken:
+    def test_environment_variable_wins_over_file(self, tmp_path):
+        key_file = tmp_path / "token"
+        key_file.write_text("from-file\n")
+
+        assert load_discord_token({"DISCORD_TOKEN": "from-env"}, key_file) == "from-env"
+
+    def test_file_is_used_when_variable_is_missing(self, tmp_path):
+        key_file = tmp_path / "token"
+        key_file.write_text("  from-file \n")
+
+        assert load_discord_token({}, key_file) == "from-file"
+
+    def test_missing_token_is_an_error_naming_both_places(self, tmp_path):
+        with pytest.raises(ConfigError, match="DISCORD_TOKEN"):
+            load_discord_token({}, tmp_path / "nope")

@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from watchlog.config import DiscordConfig as DiscordConfigForTest
+
 from watchlog.cli import main
 
 SAMPLE = Path(__file__).parent / "fixtures" / "sample_chat.txt"
@@ -305,3 +307,59 @@ def test_stats_invalid_period_date_is_rejected(tmp_path, capsys):
 
     assert exit_info.value.code == 2
     assert "boh" in capsys.readouterr().err
+
+
+def test_bot_runs_with_config_token_and_database_path(tmp_path, monkeypatch):
+    config = tmp_path / "discord.yaml"
+    config.write_text("guild_id: 1\nstats_channel_id: 2\n", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr("watchlog.cli.load_discord_token", lambda: "fake-token")
+    monkeypatch.setattr("watchlog.discord_app.run", lambda token, cfg, db: calls.append((token, cfg, db)))
+
+    exit_code = main(["bot", "--discord-config", str(config), "--db", str(tmp_path / "w.sqlite")])
+
+    assert exit_code == 0
+    assert calls == [("fake-token", DiscordConfigForTest(1, 2), tmp_path / "w.sqlite")]
+
+
+def test_bot_without_config_fails_clearly(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("watchlog.cli.load_discord_token", lambda: "fake-token")
+
+    exit_code = main(["bot", "--discord-config", str(tmp_path / "manca.yaml")])
+
+    assert exit_code == 2
+    assert "manca.yaml" in capsys.readouterr().err
+
+
+def test_bot_without_token_fails_clearly(tmp_path, monkeypatch, capsys):
+    from watchlog.config import ConfigError
+
+    config = tmp_path / "discord.yaml"
+    config.write_text("guild_id: 1\nstats_channel_id: 2\n", encoding="utf-8")
+
+    def no_token():
+        raise ConfigError("Token Discord mancante")
+
+    monkeypatch.setattr("watchlog.cli.load_discord_token", no_token)
+
+    exit_code = main(["bot", "--discord-config", str(config)])
+
+    assert exit_code == 2
+    assert "Token Discord mancante" in capsys.readouterr().err
+
+
+def test_bot_applies_users_file_to_the_database_before_starting(tmp_path, monkeypatch):
+    from watchlog.bot import user_names
+
+    config = tmp_path / "discord.yaml"
+    config.write_text("guild_id: 1\nstats_channel_id: 2\n", encoding="utf-8")
+    db_path = _seeded_stats_db(tmp_path)
+    users = tmp_path / "users.yaml"
+    users.write_text('users:\n  - {name: Bastio, whatsapp: "Mario Rossi", discord_id: 555}\n', encoding="utf-8")
+    monkeypatch.setattr("watchlog.cli.load_discord_token", lambda: "fake-token")
+    monkeypatch.setattr("watchlog.discord_app.run", lambda token, cfg, db: None)
+
+    exit_code = main(["bot", "--discord-config", str(config), "--db", str(db_path), "--users", str(users)])
+
+    assert exit_code == 0
+    assert "Bastio" in user_names(db_path)

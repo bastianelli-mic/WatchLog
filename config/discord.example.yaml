@@ -1,0 +1,6 @@
+# Copia questo file in config/discord.yaml (ignorato da git) e compilalo.
+# Gli ID si copiano da Discord con la modalità sviluppatore: clic destro su server o canale, "Copia ID".
+# Il token del bot non va qui: sta in local/discord_token.
+guild_id: 123456789012345678         # server
+stats_channel_id: 123456789012345678 # canale dove si lancia /stats
+input_channel_id: 123456789012345678 # canale delle visioni: non ancora usato, servirà all'inserimento live
