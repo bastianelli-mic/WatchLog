@@ -93,7 +93,7 @@ def compute_stats(
     """
     if user is not None and not db.query("SELECT 1 FROM users WHERE name = ?", (user,)):
         raise UnknownUser(f"Utente {user!r} non trovato")
-    where, params = _filters(user, since, until)
+    where, params = viewing_filters(user, since, until)
     limited = {**params, "limit": top_n}
 
     totals = db.query(
@@ -165,7 +165,7 @@ def compute_stats(
 def group_extras(
     db: Database, top_n: int = TOP_N, since: date | None = None, until: date | None = None
 ) -> GroupExtras:
-    where, params = _filters(None, since, until)
+    where, params = viewing_filters(None, since, until)
     users = [
         UserTotals(row["name"], row["views"], row["minutes"])
         for row in db.query(
@@ -195,7 +195,7 @@ def group_extras(
     return GroupExtras(users, most_watched, seen_by_all)
 
 
-def _filters(user: str | None, since: date | None, until: date | None) -> tuple[str, dict]:
+def viewing_filters(user: str | None, since: date | None, until: date | None) -> tuple[str, dict]:
     clauses, params = [], {}
     if user is not None:
         clauses.append("u.name = :user")

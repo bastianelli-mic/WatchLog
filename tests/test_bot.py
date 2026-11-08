@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 import pytest
 
-from watchlog.bot import MESSAGE_LIMIT, chunk_blocks, stats_reply, sync_users, user_names
+from watchlog.bot import MESSAGE_LIMIT, chunk_blocks, stats_reply, sync_users, user_names, viewings_reply
 from watchlog.config import ConfigError, DiscordConfig, UserConfig
 from watchlog.db import Database
 from watchlog.tmdb import MovieDetails
@@ -172,3 +172,89 @@ class TestSyncUsers:
 
         with pytest.raises(ConfigError):
             sync_users(db_path, users)
+
+
+class TestViewingsReply:
+    TODAY = date(2026, 7, 8)
+
+    def reply(self, tmp_path, **kwargs):
+        defaults = dict(channel_id=100, user=None, periodo=None, since_text=None, until_text=None, title=None)
+        return viewings_reply(seeded_db_file(tmp_path), CONFIG, today=self.TODAY, **{**defaults, **kwargs})
+
+    def test_group_list_is_public_and_in_code_blocks(self, tmp_path):
+        reply = self.reply(tmp_path)
+
+        assert reply.ephemeral is False
+        assert reply.messages[0].startswith("```\nVisioni: gruppo")
+        assert "3 visioni" in reply.messages[0]
+
+    def test_other_channels_get_a_private_pointer(self, tmp_path):
+        reply = self.reply(tmp_path, channel_id=999)
+
+        assert reply.ephemeral is True
+        assert reply.messages == ["Le statistiche si chiedono nel canale <#100>."]
+
+    def test_user_title_and_dates_filter(self, tmp_path):
+        reply = self.reply(tmp_path, user="mario", since_text="2026-07-06", title="heat")
+
+        text = reply.messages[0]
+        assert "Visioni: mario (dal 2026-07-06)" in text
+        assert "titolo «heat»" in text
+        assert "1 visioni" in text or "1 visione" in text
+
+    def test_period_shortcut_uses_today(self, tmp_path):
+        reply = self.reply(tmp_path, periodo="settimana")  # 08/07/2026 è un mercoledì: 06–12 luglio
+
+        text = reply.messages[0]
+        assert "dal 2026-07-06 al 2026-07-12" in text
+        assert "2 visioni" in text  # le visioni del 6 e del 9 luglio
+
+    def test_period_and_dates_together_are_rejected_privately(self, tmp_path):
+        reply = self.reply(tmp_path, periodo="mese", since_text="2026-07-01")
+
+        assert reply.ephemeral is True
+        assert "periodo" in reply.messages[0] and "dal" in reply.messages[0]
+
+    def test_unknown_period_unknown_user_and_bad_date_are_private_errors(self, tmp_path):
+        for kwargs, needle in [
+            ({"periodo": "ieri"}, "ieri"),
+            ({"user": "nessuno"}, "nessuno"),
+            ({"since_text": "boh"}, "boh"),
+        ]:
+            reply = self.reply(tmp_path, **kwargs)
+            assert reply.ephemeral is True and needle in reply.messages[0]
+
+    def test_no_match_says_so_in_plain_text(self, tmp_path):
+        reply = self.reply(tmp_path, title="zzz")
+
+        assert reply.messages == ["Nessuna visione trovata con questi filtri."]
+        assert reply.ephemeral is False
+
+    def test_missing_database_is_a_private_error(self, tmp_path):
+        reply = viewings_reply(
+            tmp_path / "manca.sqlite", CONFIG, 100, None, None, None, None, None, today=self.TODAY
+        )
+
+        assert reply.ephemeral is True and "Database non trovato" in reply.messages[0]
+
+    def test_many_viewings_become_several_pages(self, tmp_path):
+        path = seeded_db_file(tmp_path)
+        db = Database.open(path)
+        for index in range(50):
+            db.save_movie(MovieDetails(2000 + index, f"Film {index}", None, 2000, 100, (), ()))
+            db.add_viewing(
+                user_id=db.user_id_by_whatsapp("Mario Rossi"),
+                tmdb_id=2000 + index,
+                watched_on=date(2026, 6, 1 + index % 28),
+                watched_on_source="body",
+                rating=None,
+                sent_at=datetime(2026, 9, 1),
+                source_ref=f"extra{index}",
+            )
+        db.commit()
+        db.close()
+
+        reply = viewings_reply(path, CONFIG, 100, None, None, None, None, None, today=self.TODAY)
+
+        assert len(reply.messages) == 3  # 53 visioni, 20 per pagina
+        assert all(len(m) <= 2000 for m in reply.messages)

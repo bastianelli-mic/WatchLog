@@ -163,6 +163,17 @@ Nel canale delle statistiche si usa il comando `/stats`, con tre parametri facol
 - `dal` e `al`: il periodo, in formato `AAAA-MM-GG`, estremi inclusi.
 
 Il contenuto è lo stesso del comando `stats`, in messaggi da blocco di codice (se il report è lungo arriva in più messaggi).
+
+Sempre nel canale delle statistiche, `/visioni` mostra l'elenco delle singole visioni, dalla più recente.
+Ha gli stessi parametri facoltativi di `/stats` e se ne aggiungono due:
+- `utente`, `dal` e `al`: come per `/stats`.
+- `periodo`: una scorciatoia tra oggi, questa settimana (da lunedì a domenica), questo mese e quest'anno. Non si combina con `dal` e `al`: il bot lo segnala.
+- `titolo`: solo i film il cui titolo contiene quel testo, senza badare a maiuscole e accenti; vale anche per il titolo originale.
+
+Ogni riga ha il numero della visione, la data, l'utente (se l'elenco è di gruppo), titolo, anno e voto.
+Le righe sono 20 per pagina: con più visioni compaiono i bottoni «Precedente» e «Successivo», che può usare solo chi ha lanciato il comando.
+Le visioni annullate non compaiono.
+
 In un altro canale il bot risponde, solo a chi ha scritto, indicando il canale giusto.
 Gli errori (utente sconosciuto, data non valida) sono visibili solo a chi ha lanciato il comando.
 Per ogni token deve girare una sola istanza del bot.

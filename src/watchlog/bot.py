@@ -6,7 +6,9 @@ from pathlib import Path
 
 from watchlog.config import DiscordConfig, load_users
 from watchlog.db import Database
-from watchlog.report import render_stats
+from watchlog.listing import list_viewings, render_pages
+from watchlog.periods import period_range
+from watchlog.report import period_text, render_stats
 from watchlog.stats import TOP_N, UnknownUser, compute_stats, group_extras
 
 MESSAGE_LIMIT = 1900  # un messaggio Discord arriva a 2000 caratteri: il resto serve al blocco di codice
@@ -83,6 +85,44 @@ def stats_reply(
 
     blocks = render_stats(stats, extras, user, since, until)
     return Reply([f"{_FENCE}\n{chunk}\n{_FENCE}" for chunk in chunk_blocks(blocks)])
+
+
+def viewings_reply(
+    db_path: Path,
+    config: DiscordConfig,
+    channel_id: int,
+    user: str | None,
+    periodo: str | None,
+    since_text: str | None,
+    until_text: str | None,
+    title: str | None,
+    today: date,
+) -> Reply:
+    """Elenco delle visioni in pagine. `periodo` (oggi, settimana, mese, anno) e `dal`/`al` non si combinano."""
+    if channel_id != config.stats_channel_id:
+        return _private(f"Le statistiche si chiedono nel canale <#{config.stats_channel_id}>.")
+    if periodo and (since_text or until_text):
+        return _private("Usa `periodo` oppure `dal` e `al`, non entrambi.")
+    try:
+        since, until = period_range(periodo, today) if periodo else (_parse_date(since_text), _parse_date(until_text))
+    except ValueError as error:
+        return _private(str(error))
+    if not db_path.is_file():
+        return _private("Database non trovato: il bot non ha ancora dati.")
+
+    title = (title or "").strip() or None
+    db = Database.open(db_path)
+    try:
+        rows = list_viewings(db, user=user, since=since, until=until, title=title)
+    except UnknownUser as error:
+        return _private(str(error))
+    finally:
+        db.close()
+
+    if not rows:
+        return Reply(["Nessuna visione trovata con questi filtri."])
+    header = f"Visioni: {user or 'gruppo'}{period_text(since, until)}" + (f" · titolo «{title}»" if title else "")
+    return Reply(render_pages(rows, header, show_user=user is None))
 
 
 def sync_users(db_path: Path, users_path: Path) -> bool:

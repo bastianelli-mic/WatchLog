@@ -2,13 +2,14 @@
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
 
-from watchlog.bot import stats_reply, user_names
+from watchlog.bot import stats_reply, user_names, viewings_reply
 from watchlog.config import ConfigError, DiscordConfig
 from watchlog.live import Ask, Cancelled, LiveService, Recorded, Rejected, Unrecognized
 
@@ -17,6 +18,7 @@ log = logging.getLogger("discord.watchlog")
 
 LOCAL_TZ = ZoneInfo("Europe/Rome")  # le date dei messaggi sono quelle del gruppo, non UTC
 CHOICE_TIMEOUT_SECONDS = 180
+PAGES_TIMEOUT_SECONDS = 300
 
 
 def run(token: str, config: DiscordConfig, db_path: Path, live: LiveService | None = None) -> None:
@@ -72,10 +74,48 @@ def _build_client(config: DiscordConfig, db_path: Path, live: LiveService | None
         for message in others:
             await interaction.followup.send(message, ephemeral=reply.ephemeral)
 
-    @stats.autocomplete("utente")
     async def complete_user(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         names = [name for name in user_names(db_path) if current.lower() in name.lower()]
         return [app_commands.Choice(name=name, value=name) for name in names[:25]]
+
+    stats.autocomplete("utente")(complete_user)
+
+    @tree.command(name="visioni", description="Elenco delle visioni registrate", guild=guild)
+    @app_commands.describe(
+        utente="Nome dell'utente; senza, il gruppo intero",
+        periodo="Scorciatoia per il periodo; non si combina con dal e al",
+        dal="Solo visioni da questa data (AAAA-MM-GG)",
+        al="Solo visioni fino a questa data (AAAA-MM-GG)",
+        titolo="Solo i film il cui titolo contiene questo testo",
+    )
+    @app_commands.choices(
+        periodo=[
+            app_commands.Choice(name="Oggi", value="oggi"),
+            app_commands.Choice(name="Questa settimana", value="settimana"),
+            app_commands.Choice(name="Questo mese", value="mese"),
+            app_commands.Choice(name="Quest'anno", value="anno"),
+        ]
+    )
+    async def viewings(
+        interaction: discord.Interaction,
+        utente: str | None = None,
+        periodo: app_commands.Choice[str] | None = None,
+        dal: str | None = None,
+        al: str | None = None,
+        titolo: str | None = None,
+    ) -> None:
+        today = datetime.now(LOCAL_TZ).date()
+        reply = viewings_reply(
+            db_path, config, interaction.channel_id, utente, periodo.value if periodo else None, dal, al, titolo, today
+        )
+        if reply.ephemeral or len(reply.messages) == 1:
+            await interaction.response.send_message(reply.messages[0], ephemeral=reply.ephemeral)
+            return
+        view = _PagesView(reply.messages, interaction.user.id)
+        await interaction.response.send_message(reply.messages[0], view=view)
+        view.message = await interaction.original_response()
+
+    viewings.autocomplete("utente")(complete_user)
 
     return client
 
@@ -104,6 +144,37 @@ async def _apply(
         await say(outcome.text)
     elif isinstance(outcome, Unrecognized):
         await original.add_reaction("❓")
+
+
+class _PagesView(discord.ui.View):
+    """Bottoni per scorrere le pagine dell'elenco: li usa solo chi ha lanciato il comando."""
+
+    def __init__(self, pages: list[str], owner_id: int):
+        super().__init__(timeout=PAGES_TIMEOUT_SECONDS)
+        self._pages, self._owner_id, self._index = pages, owner_id, 0
+        self.message: discord.Message | None = None
+        self._previous = discord.ui.Button(label="◀ Precedente", style=discord.ButtonStyle.secondary, disabled=True)
+        self._next = discord.ui.Button(label="Successivo ▶", style=discord.ButtonStyle.primary)
+        self._previous.callback = self._go(-1)
+        self._next.callback = self._go(+1)
+        self.add_item(self._previous)
+        self.add_item(self._next)
+
+    def _go(self, step: int):
+        async def callback(interaction: discord.Interaction) -> None:
+            if interaction.user.id != self._owner_id:
+                await interaction.response.send_message("Può scorrere l'elenco solo chi ha lanciato il comando.", ephemeral=True)
+                return
+            self._index += step
+            self._previous.disabled = self._index == 0
+            self._next.disabled = self._index == len(self._pages) - 1
+            await interaction.response.edit_message(content=self._pages[self._index], view=self)
+
+        return callback
+
+    async def on_timeout(self) -> None:
+        if self.message is not None:
+            await self.message.edit(view=None)
 
 
 class _ChoiceView(discord.ui.View):
