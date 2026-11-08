@@ -1,0 +1,10 @@
+services:
+  watchlog:
+    build: .
+    image: watchlog:latest
+    container_name: watchlog
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+      - ./local/discord_token:/app/local/discord_token:ro
