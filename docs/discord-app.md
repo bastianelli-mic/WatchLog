@@ -14,8 +14,9 @@ Conviene fare le prove su un server di test, e invitare il bot nel server degli 
 
 1. Nel menu a sinistra apri **Bot**.
 2. Premi **Reset Token** e conferma. Il token compare una volta sola: copialo subito.
-3. Disattiva **Public Bot**, così nessun altro può invitare il bot nei suoi server.
-4. Più sotto, in **Privileged Gateway Intents**, attiva **Message Content Intent**. Serve per leggere i messaggi `data - titolo (anno)` scritti a mano nel canale delle visioni. Per i soli comandi `/stats` non serve, ma attivarlo ora evita di tornare qui. Sotto i 100 server non servono verifiche.
+3. Prima di rendere il bot privato, apri **Installation** nel menu a sinistra e in **Install Link** scegli **None**: Discord rifiuta un'app privata che ha un link di installazione predefinito. Salva.
+4. Torna su **Bot** e disattiva **Public Bot**, così nessun altro può invitare il bot nei suoi server.
+5. Più sotto, in **Privileged Gateway Intents**, attiva **Message Content Intent**. Serve per leggere i messaggi `data - titolo (anno)` scritti a mano nel canale delle visioni. Per i soli comandi `/stats` non serve, ma attivarlo ora evita di tornare qui. Sotto i 100 server non servono verifiche.
 
 ## 3. Salvare il token senza esporlo
 

@@ -3,7 +3,7 @@
 Registro dei film visti da un gruppo di amici, con le statistiche per utente e di gruppo.
 Oggi si alimenta importando l'export di una chat WhatsApp, che contiene un messaggio per ogni visione.
 Per ogni film cerca i metadati su TMDB (durata, generi, regista) e salva la visione per l'utente che l'ha scritta.
-Il bot Discord per inserire le visioni e interrogare le statistiche è il passo successivo.
+Un bot Discord risponde al comando `/stats` con le statistiche; l'inserimento delle visioni dal bot è il passo successivo.
 
 Tutti i comandi si lanciano con `watchlog` e hanno l'opzione `--help`, per esempio `watchlog stats --help`.
 
@@ -29,8 +29,10 @@ I file con i dati reali sono ignorati da git: stanno in `local/`, `data/` e `con
 | Utenti | `config/users.yaml` | Parti da `config/users.example.yaml`. |
 | Correzioni dei film | `config/corrections.yaml` | Facoltativo. Parti da `config/corrections.example.yaml`. |
 | Database | `data/watchlog.sqlite` | Creato dal primo import. |
+| Token del bot Discord | `local/discord_token`, oppure variabile `DISCORD_TOKEN` | Solo per il comando `bot`. |
+| Server e canali Discord | `config/discord.yaml` | Solo per il comando `bot`. Parti da `config/discord.example.yaml`. |
 
-Per il bot Discord, in arrivo, la guida per creare l'app e il token è in [docs/discord-app.md](docs/discord-app.md).
+Per il bot Discord: la guida per creare l'app e il token è in [docs/discord-app.md](docs/discord-app.md), quella per installarlo sul Synology in [docs/deploy-synology.md](docs/deploy-synology.md).
 
 Esempio di `config/users.yaml`:
 
@@ -132,6 +134,27 @@ Cosa significano i numeri:
 - **Tempo e durata media**: le visioni di film senza durata su TMDB non entrano nel conto, e il report lo dice.
 - **Voto medio**: considera solo le visioni votate. Lo storico di WhatsApp non ha voti, quindi compare quando ci saranno.
 - **Film visti da tutti**: compare solo se gli utenti con visioni sono almeno due, e conta chi ha almeno una visione nel periodo scelto.
+
+### `bot`: il bot Discord
+
+```
+watchlog bot
+```
+
+Collega il bot al server e resta in ascolto finché non lo fermi con Ctrl+C.
+Serve il token in `local/discord_token` e `config/discord.yaml` con gli ID del server e del canale delle statistiche.
+Opzioni: `--db`, `--discord-config` e `--users` cambiano i percorsi predefiniti.
+All'avvio il bot applica `config/users.yaml` al database: i nomi interni e i `discord_id` modificati nel file diventano effettivi riavviando il bot, senza rifare l'import.
+I nomi mostrati nel completamento del parametro `utente` sono i nomi interni di `users.yaml`, quindi per usare i nomi di Discord basta scriverli lì.
+
+Nel canale delle statistiche si usa il comando `/stats`, con tre parametri facoltativi:
+- `utente`: il nome interno di un utente, con completamento automatico. Senza, il report è del gruppo.
+- `dal` e `al`: il periodo, in formato `AAAA-MM-GG`, estremi inclusi.
+
+Il contenuto è lo stesso del comando `stats`, in messaggi da blocco di codice (se il report è lungo arriva in più messaggi).
+In un altro canale il bot risponde, solo a chi ha scritto, indicando il canale giusto.
+Gli errori (utente sconosciuto, data non valida) sono visibili solo a chi ha lanciato il comando.
+Per ogni token deve girare una sola istanza del bot.
 
 ## Flusso di lavoro consigliato
 
