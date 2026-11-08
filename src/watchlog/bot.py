@@ -64,11 +64,13 @@ def stats_reply(
     since_text: str | None = None,
     until_text: str | None = None,
     top_n: int = TOP_N,
+    periodo: str | None = None,
+    today: date | None = None,
 ) -> Reply:
     if channel_id != config.stats_channel_id:
         return _private(f"Le statistiche si chiedono nel canale <#{config.stats_channel_id}>.")
     try:
-        since, until = _parse_date(since_text), _parse_date(until_text)
+        since, until = _resolve_period(periodo, since_text, until_text, today or date.today())
     except ValueError as error:
         return _private(str(error))
     if not db_path.is_file():
@@ -101,10 +103,8 @@ def viewings_reply(
     """Elenco delle visioni in pagine. `periodo` (oggi, settimana, mese, anno) e `dal`/`al` non si combinano."""
     if channel_id != config.stats_channel_id:
         return _private(f"Le statistiche si chiedono nel canale <#{config.stats_channel_id}>.")
-    if periodo and (since_text or until_text):
-        return _private("Usa `periodo` oppure `dal` e `al`, non entrambi.")
     try:
-        since, until = period_range(periodo, today) if periodo else (_parse_date(since_text), _parse_date(until_text))
+        since, until = _resolve_period(periodo, since_text, until_text, today)
     except ValueError as error:
         return _private(str(error))
     if not db_path.is_file():
@@ -151,6 +151,17 @@ def user_names(db_path: Path) -> list[str]:
         return [row["name"] for row in db.query("SELECT name FROM users ORDER BY name")]
     finally:
         db.close()
+
+
+def _resolve_period(
+    periodo: str | None, since_text: str | None, until_text: str | None, today: date
+) -> tuple[date | None, date | None]:
+    """Il periodo da `periodo` oppure da `dal`/`al`; i due modi non si combinano. ValueError ha il messaggio per l'utente."""
+    if periodo and (since_text or until_text):
+        raise ValueError("Usa `periodo` oppure `dal` e `al`, non entrambi.")
+    if periodo:
+        return period_range(periodo, today)
+    return _parse_date(since_text), _parse_date(until_text)
 
 
 def _private(message: str) -> Reply:

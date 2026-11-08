@@ -19,6 +19,12 @@ log = logging.getLogger("discord.watchlog")
 LOCAL_TZ = ZoneInfo("Europe/Rome")  # le date dei messaggi sono quelle del gruppo, non UTC
 CHOICE_TIMEOUT_SECONDS = 180
 PAGES_TIMEOUT_SECONDS = 300
+PERIOD_CHOICES = [
+    app_commands.Choice(name="Oggi", value="oggi"),
+    app_commands.Choice(name="Questa settimana", value="settimana"),
+    app_commands.Choice(name="Questo mese", value="mese"),
+    app_commands.Choice(name="Quest'anno", value="anno"),
+]
 
 
 def run(token: str, config: DiscordConfig, db_path: Path, live: LiveService | None = None) -> None:
@@ -59,16 +65,28 @@ def _build_client(config: DiscordConfig, db_path: Path, live: LiveService | None
     @tree.command(name="stats", description="Statistiche dei film visti", guild=guild)
     @app_commands.describe(
         utente="Nome dell'utente; senza, il gruppo intero",
+        periodo="Scorciatoia per il periodo; non si combina con dal e al",
         dal="Solo visioni da questa data (AAAA-MM-GG)",
         al="Solo visioni fino a questa data (AAAA-MM-GG)",
     )
+    @app_commands.choices(periodo=PERIOD_CHOICES)
     async def stats(
         interaction: discord.Interaction,
         utente: str | None = None,
+        periodo: app_commands.Choice[str] | None = None,
         dal: str | None = None,
         al: str | None = None,
     ) -> None:
-        reply = stats_reply(db_path, config, interaction.channel_id, utente, dal, al)
+        reply = stats_reply(
+            db_path,
+            config,
+            interaction.channel_id,
+            utente,
+            dal,
+            al,
+            periodo=periodo.value if periodo else None,
+            today=datetime.now(LOCAL_TZ).date(),
+        )
         first, *others = reply.messages
         await interaction.response.send_message(first, ephemeral=reply.ephemeral)
         for message in others:
@@ -88,14 +106,7 @@ def _build_client(config: DiscordConfig, db_path: Path, live: LiveService | None
         al="Solo visioni fino a questa data (AAAA-MM-GG)",
         titolo="Solo i film il cui titolo contiene questo testo",
     )
-    @app_commands.choices(
-        periodo=[
-            app_commands.Choice(name="Oggi", value="oggi"),
-            app_commands.Choice(name="Questa settimana", value="settimana"),
-            app_commands.Choice(name="Questo mese", value="mese"),
-            app_commands.Choice(name="Quest'anno", value="anno"),
-        ]
-    )
+    @app_commands.choices(periodo=PERIOD_CHOICES)
     async def viewings(
         interaction: discord.Interaction,
         utente: str | None = None,

@@ -2,7 +2,14 @@ from datetime import date, datetime
 
 import pytest
 
-from watchlog.bot import MESSAGE_LIMIT, chunk_blocks, stats_reply, sync_users, user_names, viewings_reply
+from watchlog.bot import (
+    MESSAGE_LIMIT,
+    chunk_blocks,
+    stats_reply,
+    sync_users,
+    user_names,
+    viewings_reply,
+)
 from watchlog.config import ConfigError, DiscordConfig, UserConfig
 from watchlog.db import Database
 from watchlog.tmdb import MovieDetails
@@ -258,3 +265,30 @@ class TestViewingsReply:
 
         assert len(reply.messages) == 3  # 53 visioni, 20 per pagina
         assert all(len(m) <= 2000 for m in reply.messages)
+
+
+class TestStatsPeriodShortcut:
+    TODAY = date(2026, 7, 8)  # mercoledì
+
+    def test_period_shortcut_on_stats_uses_today(self, tmp_path):
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="settimana", today=self.TODAY)
+
+        text = "\n".join(reply.messages)
+        assert "Statistiche: gruppo (dal 2026-07-06 al 2026-07-12)" in text
+        assert "visualizzazioni: 2" in text  # le visioni del 6 e del 9 luglio
+
+    def test_period_shortcut_combines_with_a_user(self, tmp_path):
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, user="mario", periodo="mese", today=self.TODAY)
+
+        assert "visualizzazioni: 2" in "\n".join(reply.messages)
+
+    def test_period_and_dates_together_are_rejected_privately(self, tmp_path):
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="mese", since_text="2026-07-01", today=self.TODAY)
+
+        assert reply.ephemeral is True
+        assert "periodo" in reply.messages[0]
+
+    def test_unknown_period_is_a_private_error(self, tmp_path):
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="ieri", today=self.TODAY)
+
+        assert reply.ephemeral is True and "ieri" in reply.messages[0]

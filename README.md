@@ -160,14 +160,13 @@ Un messaggio modificato o cancellato dopo la registrazione non cambia nulla.
 
 Nel canale delle statistiche si usa il comando `/stats`, con tre parametri facoltativi:
 - `utente`: il nome interno di un utente, con completamento automatico. Senza, il report è del gruppo.
-- `dal` e `al`: il periodo, in formato `AAAA-MM-GG`, estremi inclusi.
+- `periodo`: una scorciatoia tra oggi, questa settimana (da lunedì a domenica), questo mese e quest'anno.
+- `dal` e `al`: il periodo, in formato `AAAA-MM-GG`, estremi inclusi. Non si combinano con `periodo`: il bot lo segnala.
 
 Il contenuto è lo stesso del comando `stats`, in messaggi da blocco di codice (se il report è lungo arriva in più messaggi).
 
 Sempre nel canale delle statistiche, `/visioni` mostra l'elenco delle singole visioni, dalla più recente.
-Ha gli stessi parametri facoltativi di `/stats` e se ne aggiungono due:
-- `utente`, `dal` e `al`: come per `/stats`.
-- `periodo`: una scorciatoia tra oggi, questa settimana (da lunedì a domenica), questo mese e quest'anno. Non si combina con `dal` e `al`: il bot lo segnala.
+Ha gli stessi parametri facoltativi di `/stats` (`utente`, `periodo`, `dal` e `al`) e se ne aggiunge uno:
 - `titolo`: solo i film il cui titolo contiene quel testo, senza badare a maiuscole e accenti; vale anche per il titolo originale.
 
 Ogni riga ha il numero della visione, la data, l'utente (se l'elenco è di gruppo), titolo, anno e voto.
