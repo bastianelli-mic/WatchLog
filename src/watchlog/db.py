@@ -134,6 +134,24 @@ class Database:
     def has_viewing(self, source_ref: str) -> bool:
         return self._scalar("SELECT 1 FROM viewing WHERE source_ref = ?", source_ref) is not None
 
+    def get_viewing(self, viewing_id: int) -> dict | None:
+        """La visione con utente e film, anche se annullata (`deleted_at` valorizzato); None se non esiste."""
+        rows = self.query(
+            "SELECT v.id AS id, v.user_id AS user_id, u.name AS user, v.watched_on AS watched_on, "
+            "v.deleted_at AS deleted_at, m.title AS title, m.year AS year "
+            "FROM viewing v JOIN users u ON u.id = v.user_id JOIN movie m ON m.tmdb_id = v.movie_id "
+            "WHERE v.id = ?",
+            (viewing_id,),
+        )
+        return rows[0] if rows else None
+
+    def cancel_viewing(self, viewing_id: int) -> bool:
+        """Annullamento logico: la riga resta nel database. False se non esiste o era già annullata."""
+        cursor = self._conn.execute(
+            "UPDATE viewing SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL", (viewing_id,)
+        )
+        return cursor.rowcount == 1
+
     def has_viewing_same_day(self, user_id: int, tmdb_id: int, watched_on: date) -> bool:
         row = self._conn.execute(
             "SELECT 1 FROM viewing WHERE user_id = ? AND movie_id = ? AND watched_on = ? AND deleted_at IS NULL",

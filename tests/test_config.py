@@ -187,3 +187,20 @@ class TestDiscordToken:
     def test_missing_token_is_an_error_naming_both_places(self, tmp_path):
         with pytest.raises(ConfigError, match="DISCORD_TOKEN"):
             load_discord_token({}, tmp_path / "nope")
+
+
+class TestSuperusers:
+    def test_superusers_are_a_list_of_discord_ids(self, tmp_path):
+        path = write(tmp_path, "guild_id: 1\nstats_channel_id: 2\nsuperusers:\n  - 1557494695574249504\n  - 42\n")
+
+        assert load_discord_config(path).superusers == (1557494695574249504, 42)
+
+    def test_superusers_default_to_nobody(self, tmp_path):
+        assert load_discord_config(write(tmp_path, "guild_id: 1\nstats_channel_id: 2\n")).superusers == ()
+
+    @pytest.mark.parametrize("value", ["abc", "[1, abc]", "5"])
+    def test_superusers_must_be_a_list_of_integers(self, tmp_path, value):
+        path = write(tmp_path, f"guild_id: 1\nstats_channel_id: 2\nsuperusers: {value}\n")
+
+        with pytest.raises(ConfigError, match="superusers"):
+            load_discord_config(path)

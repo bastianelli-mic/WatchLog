@@ -6,6 +6,7 @@ from pathlib import Path
 from watchlog.bot import sync_users
 from watchlog.config import ConfigError, load_corrections, load_discord_config, load_discord_token, load_users
 from watchlog.db import Database
+from watchlog.edits import ViewingEditor
 from watchlog.importer import ImportReport, corrections_template, import_chat
 from watchlog.live import LiveService
 from watchlog.parser import parse_export, parse_film_text
@@ -135,7 +136,8 @@ def _bot(args: argparse.Namespace) -> int:
             live = LiveService(args.db, _make_client())
         except TmdbError as error:
             print(f"Inserimento delle visioni disattivato: {error}", file=sys.stderr)
-    discord_app.run(token, config, args.db, live)
+    editor = ViewingEditor(args.db, frozenset(str(discord_id) for discord_id in config.superusers))
+    discord_app.run(token, config, args.db, live, editor)
     return 0
 
 

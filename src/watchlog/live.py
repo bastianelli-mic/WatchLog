@@ -43,10 +43,12 @@ class Option:
 
 @dataclass(frozen=True)
 class Ask:
-    kind: str  # "film": scegliere il film; "duplicate": confermare un doppione
+    kind: str  # "film": scegliere il film; "duplicate": confermare un doppione; "cancel": confermare un annullamento
     text: str
     options: tuple[Option, ...]
-    draft: Draft
+    draft: Draft | None = None  # inserimento
+    viewing_id: int | None = None  # annullamento
+    actor: str | None = None  # ID Discord di chi ha chiesto l'annullamento
 
 
 @dataclass(frozen=True)
@@ -151,7 +153,7 @@ class LiveService:
 
     def _after_film_is_known(self, db: Database, draft: Draft) -> Outcome:
         if db.has_viewing_same_day(draft.user_id, draft.tmdb_id, draft.watched_on):
-            text = f"Hai già registrato «{draft.title} ({draft.year})» per il {_italian_date(draft.watched_on)}. Lo registro di nuovo?"
+            text = f"Hai già registrato «{draft.title} ({draft.year})» per il {italian_date(draft.watched_on)}. Lo registro di nuovo?"
             return Ask("duplicate", text, (Option("Registra di nuovo", "yes"), Option("Annulla", "no")), draft)
         return self._record(db, draft)
 
@@ -172,7 +174,7 @@ class LiveService:
             return Rejected(_ALREADY_RECORDED)
 
         movie = db.query("SELECT title, year FROM movie WHERE tmdb_id = ?", (draft.tmdb_id,))[0]
-        text = f"Registrato: {movie['title']} ({movie['year']}), visto il {_italian_date(draft.watched_on)}"
+        text = f"Registrato: {movie['title']} ({movie['year']}), visto il {italian_date(draft.watched_on)}"
         if draft.rating is not None:
             text += f", voto {draft.rating:g}".replace(".", ",")
         if draft.watched_on_source == "sent_at":
@@ -181,5 +183,5 @@ class LiveService:
         return Recorded(text)
 
 
-def _italian_date(day: date) -> str:
+def italian_date(day: date) -> str:
     return day.strftime("%d/%m/%Y")

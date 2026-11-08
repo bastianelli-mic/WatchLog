@@ -4,6 +4,7 @@ import pytest
 
 from watchlog.bot import (
     MESSAGE_LIMIT,
+    cancel_channel_error,
     chunk_blocks,
     stats_reply,
     sync_users,
@@ -292,3 +293,24 @@ class TestStatsPeriodShortcut:
         reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="ieri", today=self.TODAY)
 
         assert reply.ephemeral is True and "ieri" in reply.messages[0]
+
+
+class TestCancelChannels:
+    def test_allowed_in_the_stats_and_the_viewings_channels(self):
+        config = DiscordConfig(guild_id=1, stats_channel_id=100, input_channel_id=200)
+
+        assert cancel_channel_error(config, 100) is None
+        assert cancel_channel_error(config, 200) is None
+
+    def test_elsewhere_the_message_names_the_right_channels(self):
+        config = DiscordConfig(guild_id=1, stats_channel_id=100, input_channel_id=200)
+
+        message = cancel_channel_error(config, 999)
+
+        assert "<#100>" in message and "<#200>" in message
+
+    def test_without_a_viewings_channel_only_the_stats_one_counts(self):
+        config = DiscordConfig(guild_id=1, stats_channel_id=100)
+
+        assert cancel_channel_error(config, 100) is None
+        assert "<#100>" in cancel_channel_error(config, 200)

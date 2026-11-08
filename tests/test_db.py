@@ -157,3 +157,34 @@ def test_same_day_check_matches_user_film_and_date_and_ignores_deleted(tmp_path)
 
     db.query("UPDATE viewing SET deleted_at = '2026-08-01'")
     assert db.has_viewing_same_day(mario, 949, date(2026, 7, 5)) is False
+
+
+def test_get_viewing_returns_the_joined_row_or_none(tmp_path):
+    db = Database.open(tmp_path / "w.sqlite")
+    db.sync_users([MARIO])
+    db.save_movie(heat())
+    add(db, db.user_id_by_whatsapp("Mario Rossi"))
+
+    viewing = db.get_viewing(1)
+
+    assert (viewing["user"], viewing["title"], viewing["year"], viewing["watched_on"]) == (
+        "mario",
+        "Heat - La sfida",
+        1995,
+        "2026-07-05",
+    )
+    assert viewing["deleted_at"] is None
+    assert db.get_viewing(99) is None
+
+
+def test_cancel_viewing_marks_it_deleted_once(tmp_path):
+    db = Database.open(tmp_path / "w.sqlite")
+    db.sync_users([MARIO])
+    db.save_movie(heat())
+    add(db, db.user_id_by_whatsapp("Mario Rossi"))
+
+    assert db.cancel_viewing(1) is True
+    assert db.cancel_viewing(1) is False
+    assert db.cancel_viewing(99) is False
+    assert db.get_viewing(1)["deleted_at"] is not None
+    assert db.list_viewings() == []

@@ -26,6 +26,7 @@ class DiscordConfig:
     guild_id: int
     stats_channel_id: int
     input_channel_id: int | None = None  # senza, l'inserimento delle visioni dal bot è spento
+    superusers: tuple[int, ...] = ()  # ID Discord di chi può annullare anche le visioni degli altri
 
 
 DEFAULT_DISCORD_TOKEN_FILE = Path("local/discord_token")
@@ -81,6 +82,11 @@ def load_discord_config(path: Path) -> DiscordConfig:
         ids[key] = _discord_id(path, key, value)
     if data.get("input_channel_id") is not None:
         ids["input_channel_id"] = _discord_id(path, "input_channel_id", data["input_channel_id"])
+    superusers = data.get("superusers")
+    if superusers is not None:
+        if not isinstance(superusers, list):
+            raise ConfigError(f"{path}: 'superusers' deve essere una lista di ID Discord")
+        ids["superusers"] = tuple(_discord_id(path, "superusers", value) for value in superusers)
     return DiscordConfig(**ids)
 
 

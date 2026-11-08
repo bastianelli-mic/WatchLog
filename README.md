@@ -30,7 +30,7 @@ I file con i dati reali sono ignorati da git: stanno in `local/`, `data/` e `con
 | Correzioni dei film | `config/corrections.yaml` | Facoltativo. Parti da `config/corrections.example.yaml`. |
 | Database | `data/watchlog.sqlite` | Creato dal primo import. |
 | Token del bot Discord | `local/discord_token`, oppure variabile `DISCORD_TOKEN` | Solo per il comando `bot`. |
-| Server e canali Discord | `config/discord.yaml` | Solo per il comando `bot`. Parti da `config/discord.example.yaml`. |
+| Server, canali e super user Discord | `config/discord.yaml` | Solo per il comando `bot`. Parti da `config/discord.example.yaml`. |
 
 Per il bot Discord: la guida per creare l'app e il token è in [docs/discord-app.md](docs/discord-app.md), quella per installarlo sul Synology in [docs/deploy-synology.md](docs/deploy-synology.md).
 
@@ -175,6 +175,13 @@ Le visioni annullate non compaiono.
 
 In un altro canale il bot risponde, solo a chi ha scritto, indicando il canale giusto.
 Gli errori (utente sconosciuto, data non valida) sono visibili solo a chi ha lanciato il comando.
+
+`/annulla numero` annulla una visione: il numero è quello che compare in `/visioni`.
+- Possono annullare l'autore della visione e i super user, indicati come `superusers` (ID Discord) in `config/discord.yaml`.
+- Il bot mostra film, data e utente e chiede conferma con due bottoni, solo a chi ha dato il comando.
+- Se confermi, scrive nel canale chi ha annullato cosa, così i cambiamenti restano visibili al gruppo.
+- L'annullamento è logico: la visione resta nel database ma sparisce da elenco e statistiche. Un comando per ripristinarla non c'è ancora.
+- Si usa nel canale delle statistiche o in quello delle visioni, e funziona anche senza la chiave TMDB.
 Per ogni token deve girare una sola istanza del bot.
 
 ## Flusso di lavoro consigliato

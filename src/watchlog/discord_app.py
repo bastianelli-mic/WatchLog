@@ -1,4 +1,4 @@
-"""Adattatore Discord: collega /stats e l'inserimento delle visioni alla logica in `bot` e `live`. Non contiene logica propria."""
+"""Adattatore Discord: collega i comandi e l'inserimento delle visioni alla logica in `bot`, `live` ed `edits`. Non contiene logica propria."""
 
 import asyncio
 import logging
@@ -9,8 +9,9 @@ from zoneinfo import ZoneInfo
 import discord
 from discord import app_commands
 
-from watchlog.bot import stats_reply, user_names, viewings_reply
+from watchlog.bot import cancel_channel_error, stats_reply, user_names, viewings_reply
 from watchlog.config import ConfigError, DiscordConfig
+from watchlog.edits import Done, ViewingEditor
 from watchlog.live import Ask, Cancelled, LiveService, Recorded, Rejected, Unrecognized
 
 # Figlio del logger "discord": ne eredita il formato e il livello che discord.py imposta all'avvio.
@@ -27,10 +28,16 @@ PERIOD_CHOICES = [
 ]
 
 
-def run(token: str, config: DiscordConfig, db_path: Path, live: LiveService | None = None) -> None:
+def run(
+    token: str,
+    config: DiscordConfig,
+    db_path: Path,
+    live: LiveService | None = None,
+    editor: ViewingEditor | None = None,
+) -> None:
     """Avvia il bot e resta in ascolto finché il processo non viene fermato."""
     try:
-        _build_client(config, db_path, live).run(token)
+        _build_client(config, db_path, live, editor).run(token)
     except discord.LoginFailure as error:
         raise ConfigError("Token Discord non valido") from error
     except discord.PrivilegedIntentsRequired as error:
@@ -39,7 +46,9 @@ def run(token: str, config: DiscordConfig, db_path: Path, live: LiveService | No
         ) from error
 
 
-def _build_client(config: DiscordConfig, db_path: Path, live: LiveService | None) -> discord.Client:
+def _build_client(
+    config: DiscordConfig, db_path: Path, live: LiveService | None, editor: ViewingEditor | None
+) -> discord.Client:
     guild = discord.Object(id=config.guild_id)
     intents = discord.Intents.default()
     intents.message_content = live is not None  # privilegiato: serve solo per leggere le visioni scritte a mano
@@ -61,6 +70,10 @@ def _build_client(config: DiscordConfig, db_path: Path, live: LiveService | None
 
     client = WatchLogClient(intents=intents)
     tree = app_commands.CommandTree(client)
+
+    async def complete_user(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        names = [name for name in user_names(db_path) if current.lower() in name.lower()]
+        return [app_commands.Choice(name=name, value=name) for name in names[:25]]
 
     @tree.command(name="stats", description="Statistiche dei film visti", guild=guild)
     @app_commands.describe(
@@ -91,10 +104,6 @@ def _build_client(config: DiscordConfig, db_path: Path, live: LiveService | None
         await interaction.response.send_message(first, ephemeral=reply.ephemeral)
         for message in others:
             await interaction.followup.send(message, ephemeral=reply.ephemeral)
-
-    async def complete_user(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-        names = [name for name in user_names(db_path) if current.lower() in name.lower()]
-        return [app_commands.Choice(name=name, value=name) for name in names[:25]]
 
     stats.autocomplete("utente")(complete_user)
 
@@ -128,6 +137,24 @@ def _build_client(config: DiscordConfig, db_path: Path, live: LiveService | None
 
     viewings.autocomplete("utente")(complete_user)
 
+    if editor is not None:
+
+        @tree.command(name="annulla", description="Annulla una visione: il numero compare in /visioni", guild=guild)
+        @app_commands.describe(numero="Numero della visione, come compare in /visioni")
+        async def cancel(interaction: discord.Interaction, numero: app_commands.Range[int, 1]) -> None:
+            problem = cancel_channel_error(config, interaction.channel_id)
+            if problem:
+                await interaction.response.send_message(problem, ephemeral=True)
+                return
+            outcome = await asyncio.to_thread(editor.request_cancel, str(interaction.user.id), numero)
+            if not isinstance(outcome, Ask):
+                await interaction.response.send_message(outcome.text, ephemeral=True)
+                return
+            # La domanda la vede solo chi ha dato il comando; l'esito, se confermato, lo vede tutto il canale.
+            view = _ChoiceView(outcome, interaction.user.id, editor.answer, _cancel_presenter(interaction.channel))
+            await interaction.response.send_message(outcome.text, view=view, ephemeral=True)
+            view.message = await interaction.original_response()
+
     return client
 
 
@@ -143,7 +170,12 @@ async def _apply(
         return bot_message
 
     if isinstance(outcome, Ask):
-        view = _ChoiceView(live, outcome, original)
+        view = _ChoiceView(
+            outcome,
+            original.author.id,
+            live.answer,
+            lambda next_outcome, interaction: _apply(next_outcome, original, live, interaction.message),
+        )
         view.message = await say(outcome.text, view)
     elif isinstance(outcome, Recorded):
         await original.add_reaction("✅")
@@ -155,6 +187,17 @@ async def _apply(
         await say(outcome.text)
     elif isinstance(outcome, Unrecognized):
         await original.add_reaction("❓")
+
+
+def _cancel_presenter(channel):
+    """Chiude la domanda di annullamento (messaggio privato) e, se fatto, lo annuncia nel canale."""
+
+    async def present(outcome, interaction: discord.Interaction) -> None:
+        await interaction.edit_original_response(content=outcome.text, view=None)
+        if isinstance(outcome, Done):
+            await channel.send(outcome.announcement)
+
+    return present
 
 
 class _PagesView(discord.ui.View):
@@ -174,7 +217,9 @@ class _PagesView(discord.ui.View):
     def _go(self, step: int):
         async def callback(interaction: discord.Interaction) -> None:
             if interaction.user.id != self._owner_id:
-                await interaction.response.send_message("Può scorrere l'elenco solo chi ha lanciato il comando.", ephemeral=True)
+                await interaction.response.send_message(
+                    "Può scorrere l'elenco solo chi ha lanciato il comando.", ephemeral=True
+                )
                 return
             self._index += step
             self._previous.disabled = self._index == 0
@@ -189,11 +234,14 @@ class _PagesView(discord.ui.View):
 
 
 class _ChoiceView(discord.ui.View):
-    """Bottoni di scelta: risponde solo l'autore del messaggio, e per un tempo limitato."""
+    """Bottoni di scelta: risponde solo chi ha fatto la richiesta, e per un tempo limitato.
 
-    def __init__(self, live: LiveService, ask: Ask, original: discord.Message):
+    `answer` trasforma la scelta in un esito; `present` lo mostra, a partire dall'interazione del bottone.
+    """
+
+    def __init__(self, ask: Ask, owner_id: int, answer, present):
         super().__init__(timeout=CHOICE_TIMEOUT_SECONDS)
-        self._live, self._ask, self._original = live, ask, original
+        self._ask, self._owner_id, self._answer, self._present = ask, owner_id, answer, present
         self.message: discord.Message | None = None
         for option in ask.options:
             style = discord.ButtonStyle.secondary if option.value in ("none", "no") else discord.ButtonStyle.primary
@@ -203,18 +251,18 @@ class _ChoiceView(discord.ui.View):
 
     def _callback_for(self, value: str):
         async def callback(interaction: discord.Interaction) -> None:
-            if interaction.user.id != self._original.author.id:
+            if interaction.user.id != self._owner_id:
                 await interaction.response.send_message(
                     "Può scegliere solo chi ha scritto il messaggio.", ephemeral=True
                 )
                 return
             await interaction.response.defer()
             self.stop()
-            outcome = await asyncio.to_thread(self._live.answer, self._ask, value)
-            await _apply(outcome, self._original, self._live, bot_message=interaction.message)
+            outcome = await asyncio.to_thread(self._answer, self._ask, value)
+            await self._present(outcome, interaction)
 
         return callback
 
     async def on_timeout(self) -> None:
         if self.message is not None:
-            await self.message.edit(content="Tempo scaduto: non ho registrato nulla.", view=None)
+            await self.message.edit(content="Tempo scaduto: non ho cambiato nulla.", view=None)

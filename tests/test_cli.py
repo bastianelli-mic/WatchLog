@@ -319,7 +319,9 @@ def test_bot_runs_with_config_token_and_database_path(tmp_path, monkeypatch):
     exit_code = main(["bot", "--discord-config", str(config), "--db", str(tmp_path / "w.sqlite")])
 
     assert exit_code == 0
-    assert calls == [("fake-token", DiscordConfigForTest(1, 2), tmp_path / "w.sqlite", None)]
+    token, cfg, db, live, editor = calls[0]
+    assert (token, cfg, db, live) == ("fake-token", DiscordConfigForTest(1, 2), tmp_path / "w.sqlite", None)
+    assert editor is not None  # annullare non richiede TMDB
 
 
 def test_bot_without_config_fails_clearly(tmp_path, monkeypatch, capsys):
@@ -378,6 +380,7 @@ def test_bot_enables_live_insertion_when_the_input_channel_and_tmdb_are_availabl
     main(["bot", "--discord-config", str(config), "--db", str(tmp_path / "w.sqlite")])
 
     assert isinstance(calls[0][3], LiveService)
+    assert calls[0][4] is not None
 
 
 def test_bot_runs_read_only_when_tmdb_is_not_available(tmp_path, monkeypatch, capsys):
@@ -399,3 +402,15 @@ def test_bot_runs_read_only_when_tmdb_is_not_available(tmp_path, monkeypatch, ca
     assert exit_code == 0
     assert calls[0][3] is None
     assert "Chiave TMDB mancante" in capsys.readouterr().err
+
+
+def test_bot_gives_the_editor_the_configured_superusers(tmp_path, monkeypatch):
+    config = tmp_path / "discord.yaml"
+    config.write_text("guild_id: 1\nstats_channel_id: 2\nsuperusers: [42, 43]\n", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr("watchlog.cli.load_discord_token", lambda: "fake-token")
+    monkeypatch.setattr("watchlog.discord_app.run", lambda *args: calls.append(args))
+
+    main(["bot", "--discord-config", str(config), "--db", str(tmp_path / "w.sqlite")])
+
+    assert calls[0][4]._superusers == frozenset({"42", "43"})

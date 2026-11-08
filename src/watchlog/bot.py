@@ -153,6 +153,16 @@ def user_names(db_path: Path) -> list[str]:
         db.close()
 
 
+def cancel_channel_error(config: DiscordConfig, channel_id: int) -> str | None:
+    """L'annullamento si chiede nel canale delle statistiche o in quello delle visioni; altrove, il messaggio per l'utente."""
+    channels = [config.stats_channel_id]
+    if config.input_channel_id is not None:
+        channels.append(config.input_channel_id)
+    if channel_id in channels:
+        return None
+    return "Questo comando si usa in " + " o ".join(f"<#{channel}>" for channel in channels) + "."
+
+
 def _resolve_period(
     periodo: str | None, since_text: str | None, until_text: str | None, today: date
 ) -> tuple[date | None, date | None]:
