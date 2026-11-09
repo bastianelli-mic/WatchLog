@@ -1,3 +1,5 @@
+from datetime import date, datetime
+
 from watchlog.config import Corrections, UserConfig, load_corrections
 from watchlog.db import Database
 from watchlog.importer import corrections_template, import_chat
@@ -240,3 +242,107 @@ class TestSuspiciousDates:
 
         assert again.duplicates == 1
         assert len(again.suspicious_dates) == 1
+
+
+class TestSameMessagesFromAnotherExport:
+    ANDROID = (
+        "06/07/26, 14:45 - Mario Rossi: 05/07/2026 - Heat (1995)\n"
+        "18/12/25, 12:24 - Franco Rossi: 17/12/2025 - Heat (1995)\n"
+    )
+    US_TWELVE_HOUR = (
+        "[07/06/26, 2:45:32 PM] Tu: 05/07/2026 - Heat (1995)\n"
+        "[12/18/25, 12:24:38 PM] Franco Rossi: 17/12/2025 - Heat (1995)\n"
+    )
+
+    def test_a_later_export_in_another_format_does_not_duplicate_what_is_already_there(self, tmp_path):
+        db = Database.open(tmp_path / "w.sqlite")
+        db.sync_users([UserConfig("mario", "Mario Rossi", None, ("Tu",)), UserConfig("franco", "Franco Rossi", None)])
+        client = FakeClient({"Heat": [candidate(949, 1995, "Heat")]}, {949: details(949, "Heat", 1995)})
+        first = import_chat(self.ANDROID, db, client, Corrections({}))
+
+        second = import_chat(self.US_TWELVE_HOUR, db, client, Corrections({}))
+
+        assert first.inserted == 2
+        assert (second.inserted, second.duplicates, second.unmapped_authors) == (0, 2, {})
+        assert len(db.list_viewings()) == 2
+
+    def test_seconds_do_not_make_a_message_look_new(self, tmp_path):
+        db, client = make(tmp_path)
+        import_chat("06/07/26, 00:45 - Mario Rossi: 05/07/2026 - Heat (1995)\n", db, client, Corrections({}))
+
+        again = import_chat("[06/07/26, 00:45:59] Mario Rossi: 05/07/2026 - Heat (1995)\n", db, client, Corrections({}))
+
+        assert (again.inserted, again.duplicates) == (0, 1)
+
+    def test_an_alias_is_reported_as_unmapped_only_when_it_is_not_configured(self, tmp_path):
+        db, client = make(tmp_path)
+
+        report = import_chat("[12/18/25, 12:24:38 PM] Tu: 17/12/2025 - Heat (1995)\n", db, client, Corrections({}))
+
+        assert report.unmapped_authors == {"Tu": 1}
+
+
+class TestProbableDuplicates:
+    """Lo stesso utente, lo stesso film e lo stesso giorno di una visione già registrata: quasi sempre un messaggio
+    modificato e riesportato, o una visione scritta anche su un'altra fonte."""
+
+    EDITED_ONCE = "06/07/26, 00:45 - Mario Rossi: 05/07/2026 - Heat (1995)\n"
+    EDITED_TWICE = "06/07/26, 00:46 - Mario Rossi: 05/07/2026 - Heat (1995)\n"  # stesso film e giorno, un minuto dopo
+
+    def test_an_edited_message_is_reported_and_not_inserted_again(self, tmp_path):
+        db, client = make(tmp_path)
+        import_chat(self.EDITED_ONCE, db, client, Corrections({}))
+
+        report = import_chat(self.EDITED_TWICE, db, client, Corrections({}))
+
+        assert (report.inserted, report.duplicates) == (0, 0)
+        assert [(e.line_no, e.author, e.title) for e in report.probable_duplicates] == [(1, "Mario Rossi", "Heat")]
+        assert len(db.list_viewings()) == 1
+
+    def test_another_day_or_another_user_is_a_new_viewing(self, tmp_path):
+        db, client = make(tmp_path)
+        import_chat(self.EDITED_ONCE, db, client, Corrections({}))
+        chat = (
+            "06/07/26, 00:50 - Mario Rossi: 06/07/2026 - Heat (1995)\n"
+            "06/07/26, 00:51 - Franco Rossi: 05/07/2026 - Heat (1995)\n"
+        )
+
+        report = import_chat(chat, db, client, Corrections({}))
+
+        assert (report.inserted, report.probable_duplicates) == (2, [])
+
+    def test_a_viewing_already_recorded_by_the_bot_counts_too(self, tmp_path):
+        db, client = make(tmp_path)
+        user_id = db.user_id_by_whatsapp("Mario Rossi")
+        db.save_movie(details(949, "Heat", 1995))
+        db.add_viewing(
+            user_id=user_id,
+            tmdb_id=949,
+            watched_on=date(2026, 7, 5),
+            watched_on_source="body",
+            rating=None,
+            sent_at=datetime(2026, 7, 6, 10, 0),
+            source_ref="discord:1",
+        )
+        db.commit()
+
+        report = import_chat(self.EDITED_ONCE, db, client, Corrections({}))
+
+        assert report.inserted == 0 and len(report.probable_duplicates) == 1
+
+    def test_two_lines_of_the_same_file_for_the_same_day_keep_the_first_and_report_the_second(self, tmp_path):
+        db, client = make(tmp_path)
+
+        report = import_chat(self.EDITED_ONCE + self.EDITED_TWICE, db, client, Corrections({}))
+
+        assert (report.inserted, len(report.probable_duplicates)) == (1, 1)
+
+    def test_cancelled_viewings_do_not_block_a_new_one(self, tmp_path):
+        db, client = make(tmp_path)
+        import_chat(self.EDITED_ONCE, db, client, Corrections({}))
+        db.cancel_viewing(1)
+        db.commit()
+
+        report = import_chat(self.EDITED_TWICE, db, client, Corrections({}))
+
+        assert (report.inserted, report.probable_duplicates) == (1, [])

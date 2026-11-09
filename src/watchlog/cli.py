@@ -186,6 +186,14 @@ def _print_import_report(report: ImportReport, dry_run: bool) -> None:
         )
         print(corrections_template(report.unresolved))
 
+    if report.probable_duplicates:
+        print(
+            f"\nProbabili doppioni ({len(report.probable_duplicates)}): stesso utente, film e giorno "
+            "di una visione già registrata, quindi non inseriti:"
+        )
+        for entry in report.probable_duplicates:
+            print(f"  riga {entry.line_no} [{entry.author}] visto il {entry.watched_on}: {entry.title} ({entry.year})")
+
     if report.suspicious_dates:
         print(f"\nDate sospette ({len(report.suspicious_dates)}): visione molto prima dell'invio, o dopo:")
         for entry in report.suspicious_dates:

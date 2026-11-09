@@ -45,6 +45,9 @@ users:
     whatsapp: "Franco Rossi"
 ```
 
+Il campo facoltativo `aliases` elenca altri nomi della stessa persona nella chat. Serve soprattutto a chi esporta: nel suo export i suoi messaggi compaiono come "Tu", mentre in quello di un altro telefono hanno il suo nome.
+L'importazione riconosce un messaggio già importato dal nome principale (`whatsapp`), dal minuto d'invio e dal film: alias e secondi non contano, quindi riesportare la chat da un altro telefono non duplica nulla.
+
 ## Formato dei messaggi
 
 Ogni visione è un messaggio come questo:
@@ -102,6 +105,7 @@ Il report riporta le visualizzazioni nel file, quelle inserite, quelle già pres
 Può inoltre contenere queste sezioni:
 - **Utenti non mappati**: aggiungili a `config/users.yaml`.
 - **Film da risolvere**: vedi più sotto, "Compilare `corrections.yaml`".
+- **Probabili doppioni**: righe non inserite perché lo stesso utente ha già una visione dello stesso film nello stesso giorno. Di solito è un messaggio modificato dopo l'import, che nell'export ha un testo o un minuto diverso. Vale anche per una visione registrata dal bot. Se è davvero una seconda visione nello stesso giorno, aggiungila dal bot, che chiede conferma.
 - **Date sospette**: righe con la data del messaggio più di 31 giorni prima dell'invio, o dopo. Di solito è un refuso nell'anno. Le righe vengono importate lo stesso.
 - **Anomalie del parser**: righe che non sono visioni, o con la data sbagliata.
 
@@ -110,7 +114,7 @@ Opzioni: `--db`, `--users` e `--corrections` cambiano i percorsi predefiniti (`d
 Cose da sapere:
 - **Si può rilanciare in sicurezza.** Le righe già importate vengono riconosciute e non duplicate, e non fanno più chiamate a TMDB.
 - **È atomico.** Se TMDB fallisce a metà, non viene salvato nulla.
-- **Un messaggio modificato dopo l'import** e poi riesportato viene visto come una visione nuova, perché l'export non ha un identificativo del messaggio.
+- **Un messaggio modificato dopo l'import** e poi riesportato non è riconosciuto dalla chiave, perché l'export non ha un identificativo del messaggio. Se il film e il giorno sono gli stessi, finisce tra i probabili doppioni e non viene aggiunto; se l'hai cambiato (film o giorno), è una visione nuova e quella vecchia resta.
 - **Le righe già importate non si aggiornano.** Se correggi una data nella chat e rilanci l'import, il database non cambia. Finché il database deriva solo dalla chat, la strada più semplice è fare una copia di `data/watchlog.sqlite`, cancellarlo e reimportare.
 
 ### `stats`: le statistiche

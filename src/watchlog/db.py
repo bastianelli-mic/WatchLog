@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS users (
     whatsapp_name TEXT NOT NULL UNIQUE,
     discord_id TEXT UNIQUE
 );
+CREATE TABLE IF NOT EXISTS user_alias (
+    name TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id)
+);
 CREATE TABLE IF NOT EXISTS movie (
     tmdb_id INTEGER PRIMARY KEY,
     title TEXT NOT NULL,
@@ -87,9 +91,22 @@ class Database:
                 "ON CONFLICT(whatsapp_name) DO UPDATE SET name = excluded.name, discord_id = excluded.discord_id",
                 (user.name, user.whatsapp, user.discord_id),
             )
+            user_id = self.user_id_by_whatsapp(user.whatsapp)
+            self._conn.execute("DELETE FROM user_alias WHERE user_id = ?", (user_id,))
+            for alias in user.aliases:
+                self._conn.execute("INSERT OR REPLACE INTO user_alias (name, user_id) VALUES (?, ?)", (alias, user_id))
 
     def user_id_by_whatsapp(self, whatsapp_name: str) -> int | None:
         return self._scalar("SELECT id FROM users WHERE whatsapp_name = ?", whatsapp_name)
+
+    def find_user_by_chat_name(self, chat_name: str) -> tuple[int, str] | None:
+        """L'utente e il suo nome principale nella chat, cercando per nome principale o per alias."""
+        rows = self.query(
+            "SELECT id, whatsapp_name FROM users WHERE whatsapp_name = ? "
+            "UNION ALL SELECT u.id, u.whatsapp_name FROM user_alias a JOIN users u ON u.id = a.user_id WHERE a.name = ?",
+            (chat_name, chat_name),
+        )
+        return (rows[0]["id"], rows[0]["whatsapp_name"]) if rows else None
 
     def user_id_by_discord(self, discord_id: str) -> int | None:
         return self._scalar("SELECT id FROM users WHERE discord_id = ?", discord_id)

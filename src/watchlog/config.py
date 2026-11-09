@@ -19,6 +19,7 @@ class UserConfig:
     name: str
     whatsapp: str
     discord_id: str | None
+    aliases: tuple[str, ...] = ()  # altri nomi della stessa persona nella chat (per esempio "Tu" nell'export di chi esporta)
 
 
 @dataclass(frozen=True)
@@ -50,11 +51,20 @@ def load_users(path: Path) -> list[UserConfig]:
         if not item.get("whatsapp"):
             raise ConfigError(f"{path}: utente {item['name']!r} senza 'whatsapp'")
         discord_id = item.get("discord_id")
+        aliases = item.get("aliases") or []
+        if not isinstance(aliases, list) or not all(isinstance(alias, str) for alias in aliases):
+            raise ConfigError(f"{path}: utente {item['name']!r}: 'aliases' deve essere una lista di nomi")
         users.append(
-            UserConfig(str(item["name"]), str(item["whatsapp"]), None if discord_id is None else str(discord_id))
+            UserConfig(
+                str(item["name"]),
+                str(item["whatsapp"]),
+                None if discord_id is None else str(discord_id),
+                tuple(aliases),
+            )
         )
     _reject_duplicates(path, "name", [u.name for u in users])
     _reject_duplicates(path, "whatsapp", [u.whatsapp for u in users])
+    _reject_duplicates(path, "nome nella chat", [name for u in users for name in (u.whatsapp, *u.aliases)])
     return users
 
 

@@ -188,3 +188,24 @@ def test_cancel_viewing_marks_it_deleted_once(tmp_path):
     assert db.cancel_viewing(99) is False
     assert db.get_viewing(1)["deleted_at"] is not None
     assert db.list_viewings() == []
+
+
+def test_a_chat_name_is_found_by_canonical_name_or_alias(tmp_path):
+    db = Database.open(tmp_path / "w.sqlite")
+    db.sync_users([UserConfig("mario", "Mario Rossi", None, ("Tu",))])
+    user_id = db.user_id_by_whatsapp("Mario Rossi")
+
+    assert db.find_user_by_chat_name("Mario Rossi") == (user_id, "Mario Rossi")
+    assert db.find_user_by_chat_name("Tu") == (user_id, "Mario Rossi")
+    assert db.find_user_by_chat_name("Nessuno") is None
+
+
+def test_aliases_follow_the_configuration_when_it_changes(tmp_path):
+    db = Database.open(tmp_path / "w.sqlite")
+    db.sync_users([UserConfig("mario", "Mario Rossi", None, ("Tu", "Mario"))])
+
+    db.sync_users([UserConfig("mario", "Mario Rossi", None, ("Io",))])
+
+    assert db.find_user_by_chat_name("Tu") is None
+    assert db.find_user_by_chat_name("Mario") is None
+    assert db.find_user_by_chat_name("Io") is not None

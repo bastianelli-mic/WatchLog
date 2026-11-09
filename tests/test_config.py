@@ -36,6 +36,37 @@ users:
             UserConfig("giuseppe", "Giuseppe Verdi", None),
         ]
 
+    def test_aliases_are_other_names_of_the_same_person_in_the_chat(self, tmp_path):
+        path = write(tmp_path, 'users:\n  - {name: mario, whatsapp: "Mario Rossi", aliases: ["Tu", "Mario"]}\n')
+
+        assert load_users(path) == [UserConfig("mario", "Mario Rossi", None, ("Tu", "Mario"))]
+
+    def test_users_have_no_aliases_by_default(self, tmp_path):
+        path = write(tmp_path, 'users:\n  - {name: mario, whatsapp: "Mario Rossi"}\n')
+
+        assert load_users(path)[0].aliases == ()
+
+    def test_aliases_must_be_a_list_of_names(self, tmp_path):
+        path = write(tmp_path, 'users:\n  - {name: mario, whatsapp: "Mario Rossi", aliases: Tu}\n')
+
+        with pytest.raises(ConfigError, match="aliases"):
+            load_users(path)
+
+    def test_an_alias_cannot_be_the_name_or_alias_of_somebody_else(self, tmp_path):
+        clash_with_name = write(
+            tmp_path,
+            'users:\n  - {name: a, whatsapp: "Mario Rossi"}\n  - {name: b, whatsapp: "Franco Rossi", aliases: ["Mario Rossi"]}\n',
+        )
+        clash_with_alias = write(
+            tmp_path,
+            'users:\n  - {name: a, whatsapp: "Mario Rossi", aliases: ["Tu"]}\n  - {name: b, whatsapp: "Franco Rossi", aliases: ["Tu"]}\n',
+            name="other.yaml",
+        )
+
+        for path in (clash_with_name, clash_with_alias):
+            with pytest.raises(ConfigError, match="duplicato"):
+                load_users(path)
+
     def test_missing_file_is_a_config_error_naming_the_path(self, tmp_path):
         with pytest.raises(ConfigError, match="nope.yaml"):
             load_users(tmp_path / "nope.yaml")

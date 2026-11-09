@@ -24,6 +24,7 @@ class ImportReport:
     unresolved: list[Resolution] = field(default_factory=list)  # un film distinto per voce
     unresolved_viewings: int = 0
     suspicious_dates: list[Entry] = field(default_factory=list)
+    probable_duplicates: list[Entry] = field(default_factory=list)  # non inseriti: la visione c'era già
 
 
 def import_chat(text: str, db: Database, client, corrections: Corrections) -> ImportReport:
@@ -37,12 +38,13 @@ def import_chat(text: str, db: Database, client, corrections: Corrections) -> Im
     film_ids: dict[tuple[str, int], int | None] = {}
 
     for entry in parsed.entries:
-        user_id = db.user_id_by_whatsapp(entry.author)
-        if user_id is None:
+        found = db.find_user_by_chat_name(entry.author)
+        if found is None:
             report.unmapped_authors[entry.author] = report.unmapped_authors.get(entry.author, 0) + 1
             continue
+        user_id, chat_name = found
 
-        source_ref = _source_ref(entry)
+        source_ref = _source_ref(entry, chat_name)
         if db.has_viewing(source_ref):
             report.duplicates += 1
             continue
@@ -53,6 +55,11 @@ def import_chat(text: str, db: Database, client, corrections: Corrections) -> Im
         tmdb_id = film_ids[key]
         if tmdb_id is None:
             report.unresolved_viewings += 1
+            continue
+
+        if db.has_viewing_same_day(user_id, tmdb_id, entry.watched_on):
+            # Di solito è un messaggio modificato e riesportato (cambia il testo, quindi la chiave): non lo si raddoppia.
+            report.probable_duplicates.append(entry)
             continue
 
         if not db.has_movie(tmdb_id):
@@ -118,7 +125,9 @@ def _is_suspicious_date(entry: Entry) -> bool:
     return days_before_send > MAX_DAYS_BEFORE_SEND or days_before_send < 0
 
 
-def _source_ref(entry: Entry) -> str:
-    """Identifica la riga d'origine: autore, istante d'invio e film (nell'export non c'è un id del messaggio)."""
-    raw = f"{entry.author}|{entry.sent_at.isoformat()}|{entry.title}|{entry.year}"
+def _source_ref(entry: Entry, chat_name: str) -> str:
+    """Identifica la riga d'origine (nell'export non c'è un id del messaggio): nome principale dell'utente, minuto
+    d'invio e film. Né gli alias né i secondi entrano nella chiave, così lo stesso messaggio riesportato da un altro
+    telefono, o in un altro formato, risulta già importato."""
+    raw = f"{chat_name}|{entry.sent_at.replace(second=0, microsecond=0).isoformat()}|{entry.title}|{entry.year}"
     return "whatsapp:" + hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()

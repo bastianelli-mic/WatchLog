@@ -414,3 +414,20 @@ def test_bot_gives_the_editor_the_configured_superusers(tmp_path, monkeypatch):
     main(["bot", "--discord-config", str(config), "--db", str(tmp_path / "w.sqlite")])
 
     assert calls[0][4]._superusers == frozenset({"42", "43"})
+
+
+def test_import_report_lists_probable_duplicates(tmp_path, monkeypatch, capsys):
+    args, _, _ = _import_setup(tmp_path, monkeypatch)
+    chat = tmp_path / "chat.txt"
+    chat.write_text(
+        "06/07/26, 00:45 - Mario Rossi: 05/07/2026 - Roofman (2025)\n"
+        "06/07/26, 00:46 - Mario Rossi: 05/07/2026 - Roofman (2025)\n",
+        encoding="utf-8",
+    )
+
+    main(args + ["--dry-run"])
+
+    out = capsys.readouterr().out
+    assert "Probabili doppioni (1)" in out
+    assert "riga 2" in out and "Roofman (2025)" in out
+    assert "inseriti: 1" in out
