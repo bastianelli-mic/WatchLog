@@ -12,7 +12,7 @@ from watchlog.importer import ImportReport, corrections_template, import_chat
 from watchlog.live import LiveService
 from watchlog.parser import parse_export, parse_film_text
 from watchlog.resolver import Resolution, resolve
-from watchlog.report import render_stats
+from watchlog.report import DETAILS, render_stats
 from watchlog.stats import UnknownUser, compute_stats, group_extras
 from watchlog.tmdb import TmdbClient, TmdbError, http_fetch, load_api_key
 
@@ -43,6 +43,13 @@ def main(argv: list[str] | None = None) -> int:
     stats_cmd.add_argument("--dal", type=_start_argument, help="solo visioni da questa data (gg/mm/aaaa, mm/aaaa o aaaa), inclusa")
     stats_cmd.add_argument("--al", type=_end_argument, help="solo visioni fino a questa data (gg/mm/aaaa, mm/aaaa o aaaa), inclusa")
 
+    stats_cmd.add_argument(
+        "--dettaglio",
+        action="append",
+        choices=DETAILS,
+        help="gruppo di statistiche da mostrare oltre al riepilogo; si può ripetere. Senza, il report è completo",
+    )
+
     bot_cmd = commands.add_parser("bot", help="avvia il bot Discord (comando /stats)")
     bot_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
     bot_cmd.add_argument("--discord-config", type=Path, default=Path("config/discord.yaml"))
@@ -52,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "parse":
         return _parse(args.chat)
     if args.command == "stats":
-        return _stats(args.db, args.user, args.dal, args.al)
+        return _stats(args.db, args.user, args.dal, args.al, args.dettaglio)
     try:
         if args.command == "resolve":
             return _resolve(args.film)
@@ -143,7 +150,7 @@ def _bot(args: argparse.Namespace) -> int:
     return 0
 
 
-def _stats(db_path: Path, user: str | None, since: date | None, until: date | None) -> int:
+def _stats(db_path: Path, user: str | None, since: date | None, until: date | None, details: list[str] | None) -> int:
     if not db_path.is_file():
         print(f"Database non trovato: {db_path}", file=sys.stderr)
         return 2
@@ -157,7 +164,7 @@ def _stats(db_path: Path, user: str | None, since: date | None, until: date | No
     finally:
         db.close()
 
-    print("\n\n".join(render_stats(stats, extras, user, since, until)))
+    print("\n\n".join(render_stats(stats, extras, user, since, until, details)))
     return 0
 
 

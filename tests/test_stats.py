@@ -4,7 +4,7 @@ import pytest
 
 from watchlog.config import UserConfig
 from watchlog.db import Database
-from watchlog.stats import Streak, UnknownUser, compute_stats, group_extras
+from watchlog.stats import Record, Streak, UnknownUser, compute_stats, group_extras
 from watchlog.tmdb import MovieDetails
 
 # Database di prova con numeri calcolati a mano.
@@ -249,6 +249,68 @@ class TestBusiestDays:
         assert compute_stats(db).busiest_days == [("2026-08-01", 3), ("2026-07-01", 1), ("2026-08-05", 1)]
         assert compute_stats(db, user="franco").busiest_days == [("2026-08-01", 1), ("2026-08-05", 1)]
         assert compute_stats(db, top_n=1).busiest_days == [("2026-08-01", 3)]
+
+
+class TestRecords:
+    @staticmethod
+    def seeded():
+        db = Database.in_memory()
+        db.sync_users([UserConfig("mario", "Mario Rossi", None), UserConfig("franco", "Franco Rossi", None)])
+        db.save_movie(movie(1, "Heat", 1995, 170))
+        # luglio 2026: lunedì 6 (2 film), martedì 7, domenica 12 (stessa settimana: 4), lunedì 13 (settimana dopo)
+        for ref, user, day in [
+            ("a", "mario", date(2026, 7, 6)),
+            ("b", "mario", date(2026, 7, 6)),
+            ("c", "franco", date(2026, 7, 7)),
+            ("d", "mario", date(2026, 7, 12)),
+            ("e", "mario", date(2026, 7, 13)),
+            ("f", "mario", date(2026, 8, 1)),
+            ("g", "mario", date(2027, 1, 1)),
+        ]:
+            _add(db, ref, user, 1, day)
+        return db
+
+    def test_the_most_films_in_a_day_week_month_and_year(self):
+        records = compute_stats(self.seeded()).records
+
+        assert records == [
+            Record("giorno", 2, "2026-07-06", "2026-07-06"),
+            Record("settimana", 4, "2026-07-06", "2026-07-12"),
+            Record("mese", 5, "2026-07-01", "2026-07-31"),
+            Record("anno", 6, "2026-01-01", "2026-12-31"),
+        ]
+
+    def test_weeks_run_from_monday_to_sunday_and_cross_months(self):
+        db = Database.in_memory()
+        db.sync_users([UserConfig("mario", "Mario Rossi", None)])
+        db.save_movie(movie(1, "Heat", 1995, 170))
+        for ref, day in [("a", date(2026, 7, 30)), ("b", date(2026, 7, 31)), ("c", date(2026, 8, 2))]:
+            _add(db, ref, "mario", 1, day)
+
+        week = next(r for r in compute_stats(db).records if r.period == "settimana")
+
+        assert week == Record("settimana", 3, "2026-07-27", "2026-08-02")
+
+    def test_ties_go_to_the_earliest_period(self):
+        db = Database.in_memory()
+        db.sync_users([UserConfig("mario", "Mario Rossi", None)])
+        db.save_movie(movie(1, "Heat", 1995, 170))
+        _add(db, "a", "mario", 1, date(2026, 8, 5))
+        _add(db, "b", "mario", 1, date(2026, 7, 5))
+
+        assert compute_stats(db).records[0] == Record("giorno", 1, "2026-07-05", "2026-07-05")
+
+    def test_records_follow_the_user_and_the_period_filters(self):
+        db = self.seeded()
+
+        franco = compute_stats(db, user="franco").records
+        later = compute_stats(db, since=date(2026, 7, 13)).records
+
+        assert franco[0] == Record("giorno", 1, "2026-07-07", "2026-07-07")
+        assert later[1] == Record("settimana", 1, "2026-07-13", "2026-07-19")
+
+    def test_no_viewings_no_records(self):
+        assert compute_stats(Database.in_memory()).records == []
 
 
 class TestPeriod:

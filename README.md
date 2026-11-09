@@ -125,16 +125,31 @@ watchlog stats --user franco                                # un utente (nome in
 watchlog stats --dal 01/08/2026 --al 31/08/2026             # un periodo, estremi inclusi
 watchlog stats --user franco --dal 01/08/2026               # le opzioni si combinano
 watchlog stats --dal 2026 --al 2026                         # tutto il 2026 (anche mm/aaaa: un mese intero)
+watchlog stats --dettaglio gusti --dettaglio tempo          # solo alcuni gruppi di statistiche (vedi sotto)
 ```
 
 Il periodo si applica alla data di visione ed è valido per ogni numero del report.
 
-Il report contiene i totali (visualizzazioni, film distinti, rivisioni, tempo totale, durata media, film più lungo e più corto, serie consecutiva più lunga, voto medio), i generi e i registi più visti, i decenni di uscita, le visualizzazioni e le ore per mese, i giorni della settimana e i giorni con più film.
+Il report completo contiene i totali (visualizzazioni, film distinti, rivisioni, tempo totale, durata media, film più lungo e più corto, serie consecutiva più lunga, voto medio), i generi e i registi più visti, i decenni di uscita, le visualizzazioni e le ore per mese, i giorni della settimana e i giorni con più film.
 Per il gruppo si aggiungono la classifica degli utenti, i film più visti e quelli visti da tutti.
 
+Le statistiche sono in gruppi con un nome, e `--dettaglio` (ripetibile) sceglie quali mostrare oltre al riepilogo:
+
+| Dettaglio | Contenuto |
+|---|---|
+| `base` | il riepilogo, sempre in testa: visualizzazioni, film distinti, rivisioni, tempo totale, serie consecutiva più lunga, voto medio |
+| `durata` | durata media, film più lungo e più corto |
+| `gusti` | generi, registi, decenni di uscita |
+| `tempo` | visualizzazioni per mese, giorni della settimana, giorni con più film, record di film visti in un giorno, una settimana, un mese e un anno |
+| `rivisti` | film rivisti più volte |
+| `classifiche` | classifica degli utenti, film più visti, film visti da tutti (solo per il gruppo) |
+| `tutto` | il report completo |
+
+Da riga di comando, senza `--dettaglio` il report è completo. Il bot invece mostra solo il riepilogo, per non intasare il canale.
 Cosa significano i numeri:
 - **Rivisioni**: visioni di un film che lo *stesso utente* aveva già visto. Due utenti che vedono lo stesso film non contano.
 - **Serie consecutiva**: giorni di calendario di fila con almeno una visione. Più visioni nello stesso giorno contano una volta. Per il gruppo conta qualunque utente.
+- **Record**: il giorno, la settimana (da lunedì a domenica), il mese e l'anno con più visioni, con il periodo in cui è successo; a parità vale il primo. Contano le visioni, quindi una rivisione conta. Per il gruppo contano tutti gli utenti.
 - **Giorni della settimana** e **mesi**: usano la data di visione scritta in chat.
 - **Tempo e durata media**: le visioni di film senza durata su TMDB non entrano nel conto, e il report lo dice.
 - **Voto medio**: considera solo le visioni votate. Lo storico di WhatsApp non ha voti, quindi compare quando ci saranno.
@@ -163,12 +178,13 @@ Il bot risponde così:
 - ❓, senza testo, se il messaggio non ha il formato di una visione: nel canale si può anche chiacchierare.
 Un messaggio modificato o cancellato dopo la registrazione non cambia nulla.
 
-Nel canale delle statistiche si usa il comando `/stats`, con tre parametri facoltativi:
+Nel canale delle statistiche si usa il comando `/stats`, con questi parametri facoltativi:
 - `utente`: il nome interno di un utente, con completamento automatico. Senza, il report è tuo: il bot ti riconosce dal `discord_id` in `config/users.yaml`, e se non c'è risponde, solo a te, di aggiungerlo. Per il gruppo intero scrivi `gruppo`, che compare in cima al completamento. Per questo `gruppo` non si può usare come nome in `users.yaml`.
 - `periodo`: una scorciatoia tra oggi, questa settimana (da lunedì a domenica), questo mese e quest'anno.
 - `dal` e `al`: il periodo, estremi inclusi, come `gg/mm/aaaa`, `mm/aaaa` o `aaaa`. Un mese o un anno senza giorno vale dal suo primo giorno in `dal` e fino al suo ultimo in `al`: `dal:07/2026 al:07/2026` è tutto luglio, `dal:2026 al:2026` tutto il 2026. Non si combinano con `periodo`: il bot lo segnala.
+- `dettaglio`: quale gruppo di statistiche aggiungere al riepilogo, da un elenco (durata, gusti, tempo, rivisti, classifiche, tutto). Senza, solo il riepilogo. Se ne sceglie uno per comando; `tutto` dà il report completo. Le classifiche esistono solo per il gruppo.
 
-Il contenuto è lo stesso del comando `stats`, in messaggi da blocco di codice (se il report è lungo arriva in più messaggi).
+I contenuti sono quelli del comando `stats`, in messaggi da blocco di codice (se il report è lungo arriva in più messaggi).
 
 Sempre nel canale delle statistiche, `/visioni` mostra l'elenco delle singole visioni, dalla più recente.
 Ha gli stessi parametri facoltativi di `/stats` (`utente`, `periodo`, `dal` e `al`) e se ne aggiunge uno:

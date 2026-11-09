@@ -64,7 +64,7 @@ class TestChunkBlocks:
 
 class TestStatsReply:
     def test_group_stats_in_the_stats_channel_are_public_and_in_code_blocks(self, tmp_path):
-        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, user="gruppo")
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, user="gruppo", dettaglio="tutto")
 
         assert reply.ephemeral is False
         assert all(m.startswith("```\n") and m.endswith("\n```") for m in reply.messages)
@@ -131,7 +131,7 @@ class TestStatsReply:
         db.commit()
         db.close()
 
-        reply = stats_reply(path, CONFIG, channel_id=100, user="gruppo", top_n=60)
+        reply = stats_reply(path, CONFIG, channel_id=100, user="gruppo", top_n=60, dettaglio="tutto")
 
         assert len(reply.messages) > 1
         assert all(len(m) <= 2000 for m in reply.messages)
@@ -342,7 +342,7 @@ class TestDefaultUser:
 
     def test_stats_for_the_group_are_asked_explicitly(self, tmp_path):
         for word in ("gruppo", "Gruppo"):
-            text = "\n".join(self.stats(tmp_path, user=word, discord_id=MARIO).messages)
+            text = "\n".join(self.stats(tmp_path, user=word, discord_id=MARIO, dettaglio="tutto").messages)
 
             assert "Statistiche: gruppo" in text and "visualizzazioni: 3" in text
             assert "Classifica utenti:" in text
@@ -379,3 +379,38 @@ class TestDefaultUser:
         reply = self.viewings(tmp_path, discord_id=STRANGER)
 
         assert reply.ephemeral is True and "users.yaml" in reply.messages[0]
+
+
+class TestDetail:
+    def stats(self, tmp_path, **kwargs):
+        return stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, user="gruppo", **kwargs)
+
+    def test_by_default_only_the_base_is_shown_in_one_message(self, tmp_path):
+        reply = self.stats(tmp_path)
+
+        assert len(reply.messages) == 1
+        text = reply.messages[0]
+        assert "visualizzazioni: 3" in text and "serie consecutiva" in text
+        assert "Generi più visti:" not in text and "Classifica utenti:" not in text
+
+    def test_a_detail_adds_its_group_of_statistics(self, tmp_path):
+        assert "Generi più visti:" in self.stats(tmp_path, dettaglio="gusti").messages[0]
+        assert "Giorni della settimana:" in "\n".join(self.stats(tmp_path, dettaglio="tempo").messages)
+        assert "Durata:" in self.stats(tmp_path, dettaglio="durata").messages[0]
+
+    def test_everything_is_the_complete_report(self, tmp_path):
+        text = "\n".join(self.stats(tmp_path, dettaglio="tutto").messages)
+
+        assert "Classifica utenti:" in text and "Generi più visti:" in text and "durata media" in text
+
+    def test_rankings_are_for_the_group_only(self, tmp_path):
+        assert "Classifica utenti:" in "\n".join(self.stats(tmp_path, dettaglio="classifiche").messages)
+
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, user="mario", dettaglio="classifiche")
+
+        assert reply.ephemeral is True and "gruppo" in reply.messages[0]
+
+    def test_an_unknown_detail_is_a_private_error(self, tmp_path):
+        reply = self.stats(tmp_path, dettaglio="boh")
+
+        assert reply.ephemeral is True and "boh" in reply.messages[0]

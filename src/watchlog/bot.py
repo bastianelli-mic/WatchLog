@@ -9,7 +9,7 @@ from watchlog.dates import parse_bound
 from watchlog.db import Database
 from watchlog.listing import list_viewings, render_pages
 from watchlog.periods import period_range
-from watchlog.report import period_text, render_stats
+from watchlog.report import DETAILS, period_text, render_stats
 from watchlog.stats import TOP_N, UnknownUser, compute_stats, group_extras
 
 MESSAGE_LIMIT = 1900  # un messaggio Discord arriva a 2000 caratteri: il resto serve al blocco di codice
@@ -68,8 +68,13 @@ def stats_reply(
     periodo: str | None = None,
     today: date | None = None,
     discord_id: str | None = None,
+    dettaglio: str = "base",
 ) -> Reply:
-    """Senza `user` valgono i dati di chi ha lanciato il comando; `gruppo` chiede quelli di tutti."""
+    """Senza `user` valgono i dati di chi ha lanciato il comando; `gruppo` chiede quelli di tutti.
+
+    `dettaglio` sceglie il gruppo di statistiche oltre al riepilogo: vedi `report.DETAILS`."""
+    if dettaglio not in DETAILS:
+        return _private(f"Dettaglio sconosciuto: {dettaglio}. Scegli tra {', '.join(DETAILS)}.")
     if channel_id != config.stats_channel_id:
         return _private(f"Le statistiche si chiedono nel canale <#{config.stats_channel_id}>.")
     try:
@@ -89,7 +94,9 @@ def stats_reply(
     finally:
         db.close()
 
-    blocks = render_stats(stats, extras, user, since, until)
+    if dettaglio == "classifiche" and user is not None:
+        return _private(f"Le classifiche esistono solo per il gruppo: usa `utente:{GROUP_NAME}`.")
+    blocks = render_stats(stats, extras, user, since, until, details=(dettaglio,))
     return Reply([f"{_FENCE}\n{chunk}\n{_FENCE}" for chunk in chunk_blocks(blocks)])
 
 

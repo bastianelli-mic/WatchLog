@@ -26,6 +26,14 @@ PERIOD_CHOICES = [
     app_commands.Choice(name="Questo mese", value="mese"),
     app_commands.Choice(name="Quest'anno", value="anno"),
 ]
+DETAIL_CHOICES = [
+    app_commands.Choice(name="Durata: media, film più lungo e più corto", value="durata"),
+    app_commands.Choice(name="Gusti: generi, registi, decenni", value="gusti"),
+    app_commands.Choice(name="Tempo: mesi, giorni della settimana, giorni con più film", value="tempo"),
+    app_commands.Choice(name="Rivisti: film rivisti più volte", value="rivisti"),
+    app_commands.Choice(name="Classifiche: utenti e film del gruppo (solo gruppo)", value="classifiche"),
+    app_commands.Choice(name="Tutto", value="tutto"),
+]
 
 
 def run(
@@ -81,14 +89,16 @@ def _build_client(
         periodo="Scorciatoia per il periodo; non si combina con dal e al",
         dal="Solo visioni da questa data: gg/mm/aaaa, mm/aaaa o aaaa",
         al="Solo visioni fino a questa data: gg/mm/aaaa, mm/aaaa o aaaa",
+        dettaglio="Quali statistiche aggiungere al riepilogo; senza, solo il riepilogo",
     )
-    @app_commands.choices(periodo=PERIOD_CHOICES)
+    @app_commands.choices(periodo=PERIOD_CHOICES, dettaglio=DETAIL_CHOICES)
     async def stats(
         interaction: discord.Interaction,
         utente: str | None = None,
         periodo: app_commands.Choice[str] | None = None,
         dal: str | None = None,
         al: str | None = None,
+        dettaglio: app_commands.Choice[str] | None = None,
     ) -> None:
         reply = stats_reply(
             db_path,
@@ -100,6 +110,7 @@ def _build_client(
             periodo=periodo.value if periodo else None,
             today=datetime.now(LOCAL_TZ).date(),
             discord_id=str(interaction.user.id),
+            dettaglio=dettaglio.value if dettaglio else "base",
         )
         first, *others = reply.messages
         await interaction.response.send_message(first, ephemeral=reply.ephemeral)

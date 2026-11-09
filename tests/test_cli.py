@@ -439,3 +439,32 @@ def test_import_report_lists_probable_duplicates(tmp_path, monkeypatch, capsys):
     assert "Probabili doppioni (1)" in out
     assert "riga 2" in out and "Roofman (2025)" in out
     assert "inseriti: 1" in out
+
+
+def test_stats_detail_restricts_the_report_and_can_be_repeated(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    main(["stats", "--db", str(path), "--dettaglio", "gusti", "--dettaglio", "durata"])
+
+    out = capsys.readouterr().out
+    assert "Generi più visti:" in out and "Durata:" in out
+    assert "Giorni della settimana:" not in out and "Classifica utenti:" not in out
+
+
+def test_stats_without_detail_is_complete(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    main(["stats", "--db", str(path)])
+
+    out = capsys.readouterr().out
+    assert "Generi più visti:" in out and "Giorni della settimana:" in out and "Classifica utenti:" in out
+
+
+def test_stats_unknown_detail_is_rejected(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["stats", "--db", str(path), "--dettaglio", "boh"])
+
+    assert exit_info.value.code == 2
+    assert "boh" in capsys.readouterr().err

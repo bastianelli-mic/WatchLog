@@ -1,5 +1,6 @@
 """Statistiche sulle visualizzazioni, per un utente o per tutto il gruppo, in un periodo opzionale."""
 
+import calendar
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -38,6 +39,16 @@ class Streak:
 
 
 @dataclass(frozen=True)
+class Record:
+    """Il periodo (giorno, settimana, mese o anno) con più visioni, e quante."""
+
+    period: str
+    count: int
+    start: str  # ISO, primo giorno del periodo
+    end: str  # ISO, ultimo giorno del periodo
+
+
+@dataclass(frozen=True)
 class Stats:
     viewings: int
     distinct_films: int
@@ -57,6 +68,7 @@ class Stats:
     longest_streak: Streak | None = None
     weekdays: list[int] = field(default_factory=lambda: [0] * 7)  # da lunedì a domenica
     busiest_days: list[tuple[str, int]] = field(default_factory=list)
+    records: list[Record] = field(default_factory=list)  # giorno, settimana, mese, anno
 
 
 @dataclass(frozen=True)
@@ -159,6 +171,7 @@ def compute_stats(
             "GROUP BY label ORDER BY n DESC, label LIMIT :limit",
             limited,
         ),
+        records=_records(db, where, params),
     )
 
 
@@ -232,6 +245,29 @@ def _weekdays(db: Database, where: str, params: dict) -> list[int]:
     for row in rows:
         counts[(row["sunday_first"] + 6) % 7] = row["n"]  # SQLite conta da domenica, noi da lunedì
     return counts
+
+
+def _records(db: Database, where: str, params: dict) -> list[Record]:
+    """Il giorno, la settimana (da lunedì a domenica), il mese e l'anno con più visioni; a parità vince il primo."""
+    days = [
+        (date.fromisoformat(row["day"]), row["n"])
+        for row in db.query(f"SELECT v.watched_on AS day, COUNT(*) AS n {_BASE} {_LIVE}{where} GROUP BY day", params)
+    ]
+    spans = {
+        "giorno": lambda day: (day, day),
+        "settimana": lambda day: (day - timedelta(days=day.weekday()), day + timedelta(days=6 - day.weekday())),
+        "mese": lambda day: (day.replace(day=1), day.replace(day=calendar.monthrange(day.year, day.month)[1])),
+        "anno": lambda day: (date(day.year, 1, 1), date(day.year, 12, 31)),
+    }
+    records = []
+    for period, span in spans.items():
+        totals: dict[tuple[date, date], int] = {}
+        for day, count in days:
+            totals[span(day)] = totals.get(span(day), 0) + count
+        if totals:
+            (start, end), count = min(totals.items(), key=lambda item: (-item[1], item[0]))
+            records.append(Record(period, count, start.isoformat(), end.isoformat()))
+    return records
 
 
 def _longest_streak(db: Database, where: str, params: dict) -> Streak | None:
