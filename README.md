@@ -192,6 +192,13 @@ Gli errori (utente sconosciuto, data non valida) sono visibili solo a chi ha lan
 - Non chiede conferma: per cambiare un voto basta riscriverlo.
 - Scrive nel canale chi ha dato quale voto a cosa, e se c'era già un voto mostra il vecchio e il nuovo.
 - Si usa negli stessi canali di `/annulla`.
+`/modifica numero [data] [film]` cambia la data, il film o entrambi di una visione. Serve almeno uno dei due.
+- La data si scrive `gg/mm/aaaa` e non può essere nel futuro. Il film si scrive `Titolo (anno)` e si risolve su TMDB come nell'inserimento: se è ambiguo compaiono i bottoni di scelta. Per cambiare il film serve la chiave TMDB.
+- Possono modificare l'autore e i super user. Il voto non cambia: per quello c'è `/voto`.
+- Il bot mostra com'era e come diventa e chiede conferma con due bottoni, solo a chi ha dato il comando.
+- Rifiuta la modifica se non cambierebbe nulla, o se darebbe una visione uguale a un'altra dello stesso utente (stesso film, stesso giorno).
+- Se confermi, scrive nel canale chi ha modificato cosa. Una data cambiata a mano conta come scritta dall'utente, non come ripiego sulla data d'invio.
+- Non resta traccia dei valori precedenti, se non nell'annuncio nel canale.
 Per ogni token deve girare una sola istanza del bot.
 
 ## Flusso di lavoro consigliato

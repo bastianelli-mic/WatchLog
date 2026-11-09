@@ -228,3 +228,23 @@ def test_set_rating_and_last_viewing_id(tmp_path):
     assert db.set_rating(1, 3.5) is True
     assert db.get_viewing(1)["rating"] == 3.5
     assert db.set_rating(99, 3.5) is False
+
+
+def test_update_viewing_and_same_day_check_excluding_itself(tmp_path):
+    db = Database.open(tmp_path / "w.sqlite")
+    db.sync_users([UserConfig("mario", "Mario Rossi", "1")])
+    db.save_movie(MovieDetails(1, "Heat", "Heat", 1995, 170, (), ()))
+    db.save_movie(MovieDetails(2, "Alien", "Alien", 1979, 117, (), ()))
+    db.add_viewing(
+        user_id=1, tmdb_id=1, watched_on=date(2026, 7, 1), watched_on_source="sent_at",
+        rating=3, sent_at=datetime(2026, 7, 6), source_ref="r1",
+    )
+
+    assert db.has_viewing_same_day(1, 1, date(2026, 7, 1)) is True
+    assert db.has_viewing_same_day(1, 1, date(2026, 7, 1), exclude_id=1) is False
+    assert db.update_viewing(1, 2, date(2026, 7, 2), "body") is True
+
+    viewing = db.get_viewing(1)
+    assert (viewing["tmdb_id"], viewing["watched_on"], viewing["rating"]) == (2, "2026-07-02", 3)
+    assert db.query("SELECT watched_on_source FROM viewing")[0]["watched_on_source"] == "body"
+    assert db.update_viewing(99, 2, date(2026, 7, 2), "body") is False

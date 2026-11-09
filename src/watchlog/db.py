@@ -154,8 +154,8 @@ class Database:
     def get_viewing(self, viewing_id: int) -> dict | None:
         """La visione con utente e film, anche se annullata (`deleted_at` valorizzato); None se non esiste."""
         rows = self.query(
-            "SELECT v.id AS id, v.user_id AS user_id, u.name AS user, v.watched_on AS watched_on, "
-            "v.deleted_at AS deleted_at, v.rating AS rating, m.title AS title, m.year AS year "
+            "SELECT v.id AS id, v.user_id AS user_id, u.name AS user, v.movie_id AS tmdb_id, v.watched_on AS watched_on, "
+            "v.watched_on_source AS watched_on_source, v.deleted_at AS deleted_at, v.rating AS rating, m.title AS title, m.year AS year "
             "FROM viewing v JOIN users u ON u.id = v.user_id JOIN movie m ON m.tmdb_id = v.movie_id "
             "WHERE v.id = ?",
             (viewing_id,),
@@ -179,12 +179,21 @@ class Database:
         """Imposta il voto di una visione; False se non esiste."""
         return self._conn.execute("UPDATE viewing SET rating = ? WHERE id = ?", (rating, viewing_id)).rowcount == 1
 
-    def has_viewing_same_day(self, user_id: int, tmdb_id: int, watched_on: date) -> bool:
+    def has_viewing_same_day(self, user_id: int, tmdb_id: int, watched_on: date, exclude_id: int | None = None) -> bool:
         row = self._conn.execute(
-            "SELECT 1 FROM viewing WHERE user_id = ? AND movie_id = ? AND watched_on = ? AND deleted_at IS NULL",
-            (user_id, tmdb_id, watched_on.isoformat()),
+            "SELECT 1 FROM viewing WHERE user_id = ? AND movie_id = ? AND watched_on = ? AND deleted_at IS NULL "
+            "AND id IS NOT ?",
+            (user_id, tmdb_id, watched_on.isoformat(), exclude_id),
         ).fetchone()
         return row is not None
+
+    def update_viewing(self, viewing_id: int, tmdb_id: int, watched_on: date, watched_on_source: str) -> bool:
+        """Cambia film e data di una visione (il voto resta); False se non esiste."""
+        cursor = self._conn.execute(
+            "UPDATE viewing SET movie_id = ?, watched_on = ?, watched_on_source = ? WHERE id = ?",
+            (tmdb_id, watched_on.isoformat(), watched_on_source, viewing_id),
+        )
+        return cursor.rowcount == 1
 
     def add_viewing(
         self,

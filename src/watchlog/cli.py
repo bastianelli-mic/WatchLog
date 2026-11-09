@@ -1,6 +1,6 @@
 import argparse
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from watchlog.bot import sync_users
@@ -130,13 +130,14 @@ def _bot(args: argparse.Namespace) -> int:
     config = load_discord_config(args.discord_config)
     token = load_discord_token()
     sync_users(args.db, args.users)  # i nomi in users.yaml diventano quelli dell'autocompletamento
-    live = None
-    if config.input_channel_id is not None:
-        try:
-            live = LiveService(args.db, _make_client())
-        except TmdbError as error:
-            print(f"Inserimento delle visioni disattivato: {error}", file=sys.stderr)
-    editor = ViewingEditor(args.db, frozenset(str(discord_id) for discord_id in config.superusers))
+    client = None
+    try:
+        client = _make_client()
+    except TmdbError as error:
+        print(f"Senza TMDB: inserimento delle visioni disattivato e film di /modifica non cambiabili ({error})", file=sys.stderr)
+    live = LiveService(args.db, client) if client is not None and config.input_channel_id is not None else None
+    superusers = frozenset(str(discord_id) for discord_id in config.superusers)
+    editor = ViewingEditor(args.db, superusers, client, today=lambda: datetime.now(discord_app.LOCAL_TZ).date())
     discord_app.run(token, config, args.db, live, editor)
     return 0
 

@@ -155,6 +155,31 @@ def _build_client(
             await interaction.response.send_message(outcome.text, view=view, ephemeral=True)
             view.message = await interaction.original_response()
 
+        @tree.command(name="modifica", description="Cambia la data o il film di una visione", guild=guild)
+        @app_commands.describe(
+            numero="Numero della visione, come compare in /visioni",
+            data="Nuova data, gg/mm/aaaa",
+            film="Nuovo film, come Titolo (anno)",
+        )
+        async def edit(
+            interaction: discord.Interaction,
+            numero: app_commands.Range[int, 1],
+            data: str | None = None,
+            film: str | None = None,
+        ) -> None:
+            problem = cancel_channel_error(config, interaction.channel_id)
+            if problem:
+                await interaction.response.send_message(problem, ephemeral=True)
+                return
+            await interaction.response.defer(ephemeral=True)  # con più film candidati TMDB può metterci un po'
+            outcome = await asyncio.to_thread(editor.request_edit, str(interaction.user.id), numero, data, film)
+            if not isinstance(outcome, Ask):
+                await interaction.followup.send(outcome.text, ephemeral=True)
+                return
+            present = _edit_presenter(interaction.channel, editor, interaction.user.id)
+            view = _ChoiceView(outcome, interaction.user.id, editor.answer, present)
+            view.message = await interaction.followup.send(outcome.text, view=view, ephemeral=True, wait=True)
+
         @tree.command(name="voto", description="Dai un voto a una visione (di default l'ultima che hai registrato)", guild=guild)
         @app_commands.describe(
             voto="Da 0,5 a 5, a passi di 0,5",
@@ -212,6 +237,22 @@ def _cancel_presenter(channel):
     """Chiude la domanda di annullamento (messaggio privato) e, se fatto, lo annuncia nel canale."""
 
     async def present(outcome, interaction: discord.Interaction) -> None:
+        await interaction.edit_original_response(content=outcome.text, view=None)
+        if isinstance(outcome, Done):
+            await channel.send(outcome.announcement)
+
+    return present
+
+
+def _edit_presenter(channel, editor: ViewingEditor, owner_id: int):
+    """Come l'annullamento, ma una scelta del film porta a un'altra domanda (la conferma) nello stesso messaggio."""
+
+    async def present(outcome, interaction: discord.Interaction) -> None:
+        if isinstance(outcome, Ask):
+            view = _ChoiceView(outcome, owner_id, editor.answer, present)
+            await interaction.edit_original_response(content=outcome.text, view=view)
+            view.message = await interaction.original_response()
+            return
         await interaction.edit_original_response(content=outcome.text, view=None)
         if isinstance(outcome, Done):
             await channel.send(outcome.announcement)

@@ -43,12 +43,16 @@ class Option:
 
 @dataclass(frozen=True)
 class Ask:
-    kind: str  # "film": scegliere il film; "duplicate": confermare un doppione; "cancel": confermare un annullamento
+    # "film": scegliere il film; "duplicate": confermare un doppione; "cancel": confermare un annullamento;
+    # "edit_film": scegliere il film di una modifica; "edit": confermare una modifica
+    kind: str
     text: str
     options: tuple[Option, ...]
     draft: Draft | None = None  # inserimento
     viewing_id: int | None = None  # annullamento
-    actor: str | None = None  # ID Discord di chi ha chiesto l'annullamento
+    actor: str | None = None  # ID Discord di chi ha chiesto l'annullamento o la modifica
+    new_date: date | None = None  # modifica: la nuova data, se cambia
+    new_tmdb_id: int | None = None  # modifica: il nuovo film, se cambia
 
 
 @dataclass(frozen=True)
