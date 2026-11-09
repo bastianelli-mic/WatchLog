@@ -93,6 +93,13 @@ users:
         with pytest.raises(ConfigError, match="mario"):
             load_users(path)
 
+    @pytest.mark.parametrize("name", ["gruppo", "Gruppo"])
+    def test_the_name_group_is_reserved_for_the_whole_group(self, tmp_path, name):
+        path = write(tmp_path, f'users:\n  - {{name: {name}, whatsapp: "Mario Rossi"}}\n')
+
+        with pytest.raises(ConfigError, match="gruppo"):
+            load_users(path)
+
     def test_duplicate_whatsapp_names_are_rejected(self, tmp_path):
         path = write(
             tmp_path,

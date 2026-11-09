@@ -164,7 +164,7 @@ Il bot risponde così:
 Un messaggio modificato o cancellato dopo la registrazione non cambia nulla.
 
 Nel canale delle statistiche si usa il comando `/stats`, con tre parametri facoltativi:
-- `utente`: il nome interno di un utente, con completamento automatico. Senza, il report è del gruppo.
+- `utente`: il nome interno di un utente, con completamento automatico. Senza, il report è tuo: il bot ti riconosce dal `discord_id` in `config/users.yaml`, e se non c'è risponde, solo a te, di aggiungerlo. Per il gruppo intero scrivi `gruppo`, che compare in cima al completamento. Per questo `gruppo` non si può usare come nome in `users.yaml`.
 - `periodo`: una scorciatoia tra oggi, questa settimana (da lunedì a domenica), questo mese e quest'anno.
 - `dal` e `al`: il periodo, estremi inclusi, come `gg/mm/aaaa`, `mm/aaaa` o `aaaa`. Un mese o un anno senza giorno vale dal suo primo giorno in `dal` e fino al suo ultimo in `al`: `dal:07/2026 al:07/2026` è tutto luglio, `dal:2026 al:2026` tutto il 2026. Non si combinano con `periodo`: il bot lo segnala.
 
@@ -174,7 +174,7 @@ Sempre nel canale delle statistiche, `/visioni` mostra l'elenco delle singole vi
 Ha gli stessi parametri facoltativi di `/stats` (`utente`, `periodo`, `dal` e `al`) e se ne aggiunge uno:
 - `titolo`: solo i film il cui titolo contiene quel testo, senza badare a maiuscole e accenti; vale anche per il titolo originale.
 
-Ogni riga ha il numero della visione, la data, l'utente (se l'elenco è di gruppo), titolo, anno e voto.
+Ogni riga ha il numero della visione, la data, l'utente (se l'elenco è di `gruppo`), titolo, anno e voto.
 Le righe sono 20 per pagina: con più visioni compaiono i bottoni «Precedente» e «Successivo», che può usare solo chi ha lanciato il comando.
 Le visioni annullate non compaiono.
 

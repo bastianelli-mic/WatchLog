@@ -16,12 +16,13 @@ from watchlog.db import Database
 from watchlog.tmdb import MovieDetails
 
 CONFIG = DiscordConfig(guild_id=1, stats_channel_id=100)
+MARIO, FRANCO, STRANGER = "111", "222", "999"
 
 
 def seeded_db_file(tmp_path):
     path = tmp_path / "w.sqlite"
     db = Database.open(path)
-    db.sync_users([UserConfig("mario", "Mario Rossi", None), UserConfig("franco", "Franco Rossi", None)])
+    db.sync_users([UserConfig("mario", "Mario Rossi", MARIO), UserConfig("franco", "Franco Rossi", FRANCO)])
     db.save_movie(MovieDetails(1, "Heat", "Heat", 1995, 120, ((28, "Azione"),), ((488, "Michael Mann"),)))
     for index, (user, day) in enumerate([("Mario Rossi", 5), ("Mario Rossi", 9), ("Franco Rossi", 6)]):
         db.add_viewing(
@@ -63,7 +64,7 @@ class TestChunkBlocks:
 
 class TestStatsReply:
     def test_group_stats_in_the_stats_channel_are_public_and_in_code_blocks(self, tmp_path):
-        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100)
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, user="gruppo")
 
         assert reply.ephemeral is False
         assert all(m.startswith("```\n") and m.endswith("\n```") for m in reply.messages)
@@ -84,7 +85,7 @@ class TestStatsReply:
         assert "Classifica utenti:" not in text
 
     def test_month_and_year_bounds_cover_the_whole_period(self, tmp_path):
-        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, since_text="07/2026", until_text="2026")
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, user="gruppo", since_text="07/2026", until_text="2026")
 
         assert "Statistiche: gruppo (dal 01/07/2026 al 31/12/2026)" in "\n".join(reply.messages)
 
@@ -130,7 +131,7 @@ class TestStatsReply:
         db.commit()
         db.close()
 
-        reply = stats_reply(path, CONFIG, channel_id=100, top_n=60)
+        reply = stats_reply(path, CONFIG, channel_id=100, user="gruppo", top_n=60)
 
         assert len(reply.messages) > 1
         assert all(len(m) <= 2000 for m in reply.messages)
@@ -191,7 +192,7 @@ class TestViewingsReply:
     TODAY = date(2026, 7, 8)
 
     def reply(self, tmp_path, **kwargs):
-        defaults = dict(channel_id=100, user=None, periodo=None, since_text=None, until_text=None, title=None)
+        defaults = dict(channel_id=100, user="gruppo", periodo=None, since_text=None, until_text=None, title=None)
         return viewings_reply(seeded_db_file(tmp_path), CONFIG, today=self.TODAY, **{**defaults, **kwargs})
 
     def test_group_list_is_public_and_in_code_blocks(self, tmp_path):
@@ -267,7 +268,7 @@ class TestViewingsReply:
         db.commit()
         db.close()
 
-        reply = viewings_reply(path, CONFIG, 100, None, None, None, None, None, today=self.TODAY)
+        reply = viewings_reply(path, CONFIG, 100, "gruppo", None, None, None, None, today=self.TODAY)
 
         assert len(reply.messages) == 3  # 53 visioni, 20 per pagina
         assert all(len(m) <= 2000 for m in reply.messages)
@@ -277,7 +278,7 @@ class TestStatsPeriodShortcut:
     TODAY = date(2026, 7, 8)  # mercoledì
 
     def test_period_shortcut_on_stats_uses_today(self, tmp_path):
-        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="settimana", today=self.TODAY)
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, user="gruppo", periodo="settimana", today=self.TODAY)
 
         text = "\n".join(reply.messages)
         assert "Statistiche: gruppo (dal 06/07/2026 al 12/07/2026)" in text
@@ -289,7 +290,7 @@ class TestStatsPeriodShortcut:
         assert "visualizzazioni: 2" in "\n".join(reply.messages)
 
     def test_period_and_dates_together_are_rejected_privately(self, tmp_path):
-        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="mese", since_text="01/07/2026", today=self.TODAY)
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, user="gruppo", periodo="mese", since_text="01/07/2026", today=self.TODAY)
 
         assert reply.ephemeral is True
         assert "periodo" in reply.messages[0]
@@ -320,3 +321,61 @@ class TestCancelChannels:
         assert cancel_channel_error(config, 100) is None
         assert "<#100>" in cancel_channel_error(config, 200)
 
+
+class TestDefaultUser:
+    """Senza `utente` si vedono i propri dati; il gruppo va chiesto con `gruppo`."""
+
+    TODAY = date(2026, 7, 8)
+
+    def stats(self, tmp_path, **kwargs):
+        return stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, today=self.TODAY, **kwargs)
+
+    def viewings(self, tmp_path, **kwargs):
+        defaults = dict(channel_id=100, user=None, periodo=None, since_text=None, until_text=None, title=None)
+        return viewings_reply(seeded_db_file(tmp_path), CONFIG, today=self.TODAY, **{**defaults, **kwargs})
+
+    def test_stats_default_to_the_callers_own(self, tmp_path):
+        text = "\n".join(self.stats(tmp_path, discord_id=MARIO).messages)
+
+        assert "Statistiche: mario" in text and "visualizzazioni: 2" in text
+        assert "Classifica utenti:" not in text
+
+    def test_stats_for_the_group_are_asked_explicitly(self, tmp_path):
+        for word in ("gruppo", "Gruppo"):
+            text = "\n".join(self.stats(tmp_path, user=word, discord_id=MARIO).messages)
+
+            assert "Statistiche: gruppo" in text and "visualizzazioni: 3" in text
+            assert "Classifica utenti:" in text
+
+    def test_an_explicit_user_wins_over_the_caller(self, tmp_path):
+        text = "\n".join(self.stats(tmp_path, user="franco", discord_id=MARIO).messages)
+
+        assert "Statistiche: franco" in text and "visualizzazioni: 1" in text
+
+    @pytest.mark.parametrize("discord_id", [STRANGER, None])
+    def test_an_unknown_caller_is_told_how_to_be_added_and_how_to_see_the_group(self, tmp_path, discord_id):
+        reply = self.stats(tmp_path, discord_id=discord_id)
+
+        assert reply.ephemeral is True
+        assert "users.yaml" in reply.messages[0] and "gruppo" in reply.messages[0]
+
+    def test_an_unknown_caller_can_still_ask_for_the_group(self, tmp_path):
+        reply = self.stats(tmp_path, user="gruppo", discord_id=STRANGER)
+
+        assert reply.ephemeral is False and "Statistiche: gruppo" in reply.messages[0]
+
+    def test_viewings_default_to_the_callers_own_without_the_user_column(self, tmp_path):
+        reply = self.viewings(tmp_path, discord_id=MARIO)
+
+        assert reply.messages[0].startswith("```\nVisioni: mario") and "2 visioni" in reply.messages[0]
+        assert "franco" not in reply.messages[0]
+
+    def test_viewings_for_the_group_are_asked_explicitly(self, tmp_path):
+        reply = self.viewings(tmp_path, user="gruppo", discord_id=MARIO)
+
+        assert reply.messages[0].startswith("```\nVisioni: gruppo") and "3 visioni" in reply.messages[0]
+
+    def test_viewings_of_an_unknown_caller_are_refused_privately(self, tmp_path):
+        reply = self.viewings(tmp_path, discord_id=STRANGER)
+
+        assert reply.ephemeral is True and "users.yaml" in reply.messages[0]

@@ -43,11 +43,16 @@ class Corrections:
         return self._by_key.get((normalize(title), year))
 
 
+GROUP_NAME = "gruppo"  # valore di `utente` nei comandi del bot per chiedere il gruppo intero
+
+
 def load_users(path: Path) -> list[UserConfig]:
     users: list[UserConfig] = []
     for index, item in enumerate(_load_list(path, "users"), start=1):
         if not item.get("name"):
             raise ConfigError(f"{path}: utente #{index} senza 'name'")
+        if str(item["name"]).lower() == GROUP_NAME:
+            raise ConfigError(f"{path}: il nome {GROUP_NAME!r} è riservato al gruppo intero nei comandi del bot")
         if not item.get("whatsapp"):
             raise ConfigError(f"{path}: utente {item['name']!r} senza 'whatsapp'")
         discord_id = item.get("discord_id")

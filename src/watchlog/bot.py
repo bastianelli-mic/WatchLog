@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from watchlog.config import DiscordConfig, load_users
+from watchlog.config import GROUP_NAME, DiscordConfig, load_users
 from watchlog.dates import parse_bound
 from watchlog.db import Database
 from watchlog.listing import list_viewings, render_pages
@@ -67,7 +67,9 @@ def stats_reply(
     top_n: int = TOP_N,
     periodo: str | None = None,
     today: date | None = None,
+    discord_id: str | None = None,
 ) -> Reply:
+    """Senza `user` valgono i dati di chi ha lanciato il comando; `gruppo` chiede quelli di tutti."""
     if channel_id != config.stats_channel_id:
         return _private(f"Le statistiche si chiedono nel canale <#{config.stats_channel_id}>.")
     try:
@@ -79,6 +81,7 @@ def stats_reply(
 
     db = Database.open(db_path)
     try:
+        user = _target_user(db, user, discord_id)
         stats = compute_stats(db, user=user, top_n=top_n, since=since, until=until)
         extras = group_extras(db, top_n=top_n, since=since, until=until) if user is None else None
     except UnknownUser as error:
@@ -100,8 +103,12 @@ def viewings_reply(
     until_text: str | None,
     title: str | None,
     today: date,
+    discord_id: str | None = None,
 ) -> Reply:
-    """Elenco delle visioni in pagine. `periodo` (oggi, settimana, mese, anno) e `dal`/`al` non si combinano."""
+    """Elenco delle visioni in pagine. `periodo` (oggi, settimana, mese, anno) e `dal`/`al` non si combinano.
+
+    Senza `user` valgono le visioni di chi ha lanciato il comando; `gruppo` chiede quelle di tutti.
+    """
     if channel_id != config.stats_channel_id:
         return _private(f"Le statistiche si chiedono nel canale <#{config.stats_channel_id}>.")
     try:
@@ -114,6 +121,7 @@ def viewings_reply(
     title = (title or "").strip() or None
     db = Database.open(db_path)
     try:
+        user = _target_user(db, user, discord_id)
         rows = list_viewings(db, user=user, since=since, until=until, title=title)
     except UnknownUser as error:
         return _private(str(error))
@@ -124,6 +132,22 @@ def viewings_reply(
         return Reply(["Nessuna visione trovata con questi filtri."])
     header = f"Visioni: {user or 'gruppo'}{period_text(since, until)}" + (f" · titolo «{title}»" if title else "")
     return Reply(render_pages(rows, header, show_user=user is None))
+
+
+def _target_user(db: Database, user: str | None, discord_id: str | None) -> str | None:
+    """Il nome da filtrare, o None per il gruppo. Senza `user`, chi ha lanciato il comando: se non lo si riconosce
+    UnknownUser porta il messaggio per lui."""
+    if user is not None and user.strip().lower() == GROUP_NAME:
+        return None
+    if user is not None:
+        return user
+    rows = db.query("SELECT name FROM users WHERE discord_id = ?", (discord_id,)) if discord_id else []
+    if not rows:
+        raise UnknownUser(
+            "Non ti riconosco: chiedi di aggiungere il tuo discord_id a users.yaml. "
+            f"Intanto puoi scegliere un nome in `utente`, oppure `{GROUP_NAME}` per tutti."
+        )
+    return rows[0]["name"]
 
 
 def sync_users(db_path: Path, users_path: Path) -> bool:

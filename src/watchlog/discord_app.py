@@ -10,7 +10,7 @@ import discord
 from discord import app_commands
 
 from watchlog.bot import cancel_channel_error, stats_reply, user_names, viewings_reply
-from watchlog.config import ConfigError, DiscordConfig
+from watchlog.config import GROUP_NAME, ConfigError, DiscordConfig
 from watchlog.edits import Done, ViewingEditor
 from watchlog.live import Ask, Cancelled, LiveService, Recorded, Rejected, Unrecognized
 
@@ -72,12 +72,12 @@ def _build_client(
     tree = app_commands.CommandTree(client)
 
     async def complete_user(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-        names = [name for name in user_names(db_path) if current.lower() in name.lower()]
+        names = [name for name in [GROUP_NAME, *user_names(db_path)] if current.lower() in name.lower()]
         return [app_commands.Choice(name=name, value=name) for name in names[:25]]
 
     @tree.command(name="stats", description="Statistiche dei film visti", guild=guild)
     @app_commands.describe(
-        utente="Nome dell'utente; senza, il gruppo intero",
+        utente="Nome dell'utente, o «gruppo» per tutti; senza, i tuoi dati",
         periodo="Scorciatoia per il periodo; non si combina con dal e al",
         dal="Solo visioni da questa data: gg/mm/aaaa, mm/aaaa o aaaa",
         al="Solo visioni fino a questa data: gg/mm/aaaa, mm/aaaa o aaaa",
@@ -99,6 +99,7 @@ def _build_client(
             al,
             periodo=periodo.value if periodo else None,
             today=datetime.now(LOCAL_TZ).date(),
+            discord_id=str(interaction.user.id),
         )
         first, *others = reply.messages
         await interaction.response.send_message(first, ephemeral=reply.ephemeral)
@@ -109,7 +110,7 @@ def _build_client(
 
     @tree.command(name="visioni", description="Elenco delle visioni registrate", guild=guild)
     @app_commands.describe(
-        utente="Nome dell'utente; senza, il gruppo intero",
+        utente="Nome dell'utente, o «gruppo» per tutti; senza, i tuoi dati",
         periodo="Scorciatoia per il periodo; non si combina con dal e al",
         dal="Solo visioni da questa data: gg/mm/aaaa, mm/aaaa o aaaa",
         al="Solo visioni fino a questa data: gg/mm/aaaa, mm/aaaa o aaaa",
@@ -126,7 +127,8 @@ def _build_client(
     ) -> None:
         today = datetime.now(LOCAL_TZ).date()
         reply = viewings_reply(
-            db_path, config, interaction.channel_id, utente, periodo.value if periodo else None, dal, al, titolo, today
+            db_path, config, interaction.channel_id, utente, periodo.value if periodo else None, dal, al, titolo, today,
+            discord_id=str(interaction.user.id),
         )
         if reply.ephemeral or len(reply.messages) == 1:
             await interaction.response.send_message(reply.messages[0], ephemeral=reply.ephemeral)
