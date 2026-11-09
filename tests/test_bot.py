@@ -83,6 +83,11 @@ class TestStatsReply:
         assert "visualizzazioni: 1" in text
         assert "Classifica utenti:" not in text
 
+    def test_month_and_year_bounds_cover_the_whole_period(self, tmp_path):
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=100, since_text="07/2026", until_text="2026")
+
+        assert "Statistiche: gruppo (dal 01/07/2026 al 31/12/2026)" in "\n".join(reply.messages)
+
     def test_other_channels_get_a_private_pointer_to_the_stats_channel(self, tmp_path):
         reply = stats_reply(seeded_db_file(tmp_path), CONFIG, channel_id=999)
 
@@ -314,3 +319,4 @@ class TestCancelChannels:
 
         assert cancel_channel_error(config, 100) is None
         assert "<#100>" in cancel_channel_error(config, 200)
+

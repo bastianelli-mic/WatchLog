@@ -124,6 +124,7 @@ watchlog stats                                              # tutto il gruppo
 watchlog stats --user franco                                # un utente (nome interno)
 watchlog stats --dal 01/08/2026 --al 31/08/2026             # un periodo, estremi inclusi
 watchlog stats --user franco --dal 01/08/2026               # le opzioni si combinano
+watchlog stats --dal 2026 --al 2026                         # tutto il 2026 (anche mm/aaaa: un mese intero)
 ```
 
 Il periodo si applica alla data di visione ed è valido per ogni numero del report.
@@ -165,7 +166,7 @@ Un messaggio modificato o cancellato dopo la registrazione non cambia nulla.
 Nel canale delle statistiche si usa il comando `/stats`, con tre parametri facoltativi:
 - `utente`: il nome interno di un utente, con completamento automatico. Senza, il report è del gruppo.
 - `periodo`: una scorciatoia tra oggi, questa settimana (da lunedì a domenica), questo mese e quest'anno.
-- `dal` e `al`: il periodo, in formato `gg/mm/aaaa`, estremi inclusi. Non si combinano con `periodo`: il bot lo segnala.
+- `dal` e `al`: il periodo, estremi inclusi, come `gg/mm/aaaa`, `mm/aaaa` o `aaaa`. Un mese o un anno senza giorno vale dal suo primo giorno in `dal` e fino al suo ultimo in `al`: `dal:07/2026 al:07/2026` è tutto luglio, `dal:2026 al:2026` tutto il 2026. Non si combinano con `periodo`: il bot lo segnala.
 
 Il contenuto è lo stesso del comando `stats`, in messaggi da blocco di codice (se il report è lungo arriva in più messaggi).
 

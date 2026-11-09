@@ -299,6 +299,14 @@ def test_stats_period_filters_and_is_shown_in_the_title(tmp_path, capsys):
     assert "visualizzazioni: 2" in out
 
 
+def test_stats_period_accepts_month_and_year_bounds(tmp_path, capsys):
+    path = _seeded_stats_db(tmp_path)
+
+    main(["stats", "--db", str(path), "--dal", "07/2026", "--al", "2026"])
+
+    assert "Statistiche: gruppo (dal 01/07/2026 al 31/12/2026)" in capsys.readouterr().out
+
+
 def test_stats_invalid_period_date_is_rejected(tmp_path, capsys):
     path = _seeded_stats_db(tmp_path)
 

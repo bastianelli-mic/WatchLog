@@ -5,7 +5,7 @@ from pathlib import Path
 
 from watchlog.bot import sync_users
 from watchlog.config import ConfigError, load_corrections, load_discord_config, load_discord_token, load_users
-from watchlog.dates import format_date, parse_date
+from watchlog.dates import format_date, parse_bound
 from watchlog.db import Database
 from watchlog.edits import ViewingEditor
 from watchlog.importer import ImportReport, corrections_template, import_chat
@@ -40,8 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     stats_cmd = commands.add_parser("stats", help="statistiche del gruppo, o di un utente con --user")
     stats_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
     stats_cmd.add_argument("--user", help="nome interno dell'utente (come in users.yaml)")
-    stats_cmd.add_argument("--dal", type=_date_argument, help="solo visioni da questa data (gg/mm/aaaa), inclusa")
-    stats_cmd.add_argument("--al", type=_date_argument, help="solo visioni fino a questa data (gg/mm/aaaa), inclusa")
+    stats_cmd.add_argument("--dal", type=_start_argument, help="solo visioni da questa data (gg/mm/aaaa, mm/aaaa o aaaa), inclusa")
+    stats_cmd.add_argument("--al", type=_end_argument, help="solo visioni fino a questa data (gg/mm/aaaa, mm/aaaa o aaaa), inclusa")
 
     bot_cmd = commands.add_parser("bot", help="avvia il bot Discord (comando /stats)")
     bot_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
@@ -161,10 +161,18 @@ def _stats(db_path: Path, user: str | None, since: date | None, until: date | No
     return 0
 
 
-def _date_argument(text: str) -> date:
-    parsed = parse_date(text)
+def _start_argument(text: str) -> date:
+    return _bound_argument(text, end=False)
+
+
+def _end_argument(text: str) -> date:
+    return _bound_argument(text, end=True)
+
+
+def _bound_argument(text: str, end: bool) -> date:
+    parsed = parse_bound(text, end)
     if parsed is None:
-        raise argparse.ArgumentTypeError(f"data non valida: {text!r} (usa gg/mm/aaaa)")
+        raise argparse.ArgumentTypeError(f"data non valida: {text!r} (usa gg/mm/aaaa, mm/aaaa o aaaa)")
     return parsed
 
 

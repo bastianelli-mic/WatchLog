@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from watchlog.config import DiscordConfig, load_users
-from watchlog.dates import parse_date
+from watchlog.dates import parse_bound
 from watchlog.db import Database
 from watchlog.listing import list_viewings, render_pages
 from watchlog.periods import period_range
@@ -172,17 +172,17 @@ def _resolve_period(
         raise ValueError("Usa `periodo` oppure `dal` e `al`, non entrambi.")
     if periodo:
         return period_range(periodo, today)
-    return _parse_date(since_text), _parse_date(until_text)
+    return _parse_bound(since_text, end=False), _parse_bound(until_text, end=True)
 
 
 def _private(message: str) -> Reply:
     return Reply([message], ephemeral=True)
 
 
-def _parse_date(text: str | None) -> date | None:
+def _parse_bound(text: str | None, end: bool) -> date | None:
     if text is None:
         return None
-    parsed = parse_date(text)
+    parsed = parse_bound(text, end)
     if parsed is None:
-        raise ValueError(f"Data non valida: {text!r} (usa gg/mm/aaaa).")
+        raise ValueError(f"Data non valida: {text!r} (usa gg/mm/aaaa, mm/aaaa o aaaa).")
     return parsed
