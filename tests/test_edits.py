@@ -143,3 +143,83 @@ class TestAnswer:
         second = editor.answer(ask, "yes")
 
         assert isinstance(second, Rejected) and "già" in second.text
+
+
+def rating_of(path, viewing_id):
+    db = Database.open(path)
+    try:
+        return db.get_viewing(viewing_id)["rating"]
+    finally:
+        db.close()
+
+
+class TestSetRating:
+    def test_the_author_rates_a_given_viewing_and_the_note_is_public(self, setup):
+        editor, path = setup
+
+        outcome = editor.set_rating(MARIO, 4.5, 1)
+
+        assert isinstance(outcome, Done)
+        assert "#1" in outcome.text and "4,5" in outcome.text
+        assert "mario ha dato 4,5 a Heat - La sfida (1995)" in outcome.announcement
+        assert "#1" in outcome.announcement
+        assert rating_of(path, 1) == 4.5
+
+    def test_without_a_number_the_last_viewing_of_the_author_is_rated(self, setup):
+        editor, path = setup
+
+        outcome = editor.set_rating(FRANCO, 3)
+
+        assert isinstance(outcome, Done) and "#2" in outcome.text
+        assert rating_of(path, 2) == 3
+        assert rating_of(path, 1) is None
+
+    def test_the_last_viewing_ignores_cancelled_ones(self, setup):
+        editor, path = setup
+        editor.answer(editor.request_cancel(FRANCO, 2), "yes")
+
+        outcome = editor.set_rating(FRANCO, 3)
+
+        assert isinstance(outcome, Rejected) and "nessuna visione" in outcome.text.lower()
+
+    def test_a_previous_rating_is_shown_in_the_note(self, setup):
+        editor, _ = setup
+        editor.set_rating(MARIO, 2, 1)
+
+        outcome = editor.set_rating(MARIO, 4, 1)
+
+        assert "da 2 a 4" in outcome.announcement
+
+    @pytest.mark.parametrize("rating", [0, 0.3, 5.5, 4.25, -1])
+    def test_a_rating_outside_half_points_from_half_to_five_is_rejected(self, setup, rating):
+        editor, path = setup
+
+        outcome = editor.set_rating(MARIO, rating, 1)
+
+        assert isinstance(outcome, Rejected)
+        assert rating_of(path, 1) is None
+
+    def test_other_peoples_viewings_cannot_be_rated(self, setup):
+        editor, path = setup
+
+        outcome = editor.set_rating(MARIO, 4, 2)
+
+        assert isinstance(outcome, Rejected) and "tue" in outcome.text
+        assert rating_of(path, 2) is None
+
+    def test_a_superuser_can_rate_anyones_viewing_and_the_note_names_the_owner(self, setup):
+        editor, path = setup
+
+        outcome = editor.set_rating(SUPER, 5, 2)
+
+        assert isinstance(outcome, Done)
+        assert "capo ha dato 5 a Heat - La sfida (1995)" in outcome.announcement and "di franco" in outcome.announcement
+        assert rating_of(path, 2) == 5
+
+    def test_unknown_user_missing_and_cancelled_viewings_are_reported(self, setup):
+        editor, _ = setup
+        editor.answer(editor.request_cancel(MARIO, 1), "yes")
+
+        assert "users.yaml" in editor.set_rating(STRANGER, 4, 1).text
+        assert "99" in editor.set_rating(MARIO, 4, 99).text
+        assert "già" in editor.set_rating(MARIO, 4, 1).text

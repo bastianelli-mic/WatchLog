@@ -209,3 +209,22 @@ def test_aliases_follow_the_configuration_when_it_changes(tmp_path):
     assert db.find_user_by_chat_name("Tu") is None
     assert db.find_user_by_chat_name("Mario") is None
     assert db.find_user_by_chat_name("Io") is not None
+
+
+def test_set_rating_and_last_viewing_id(tmp_path):
+    db = Database.open(tmp_path / "w.sqlite")
+    db.sync_users([UserConfig("mario", "Mario Rossi", "1")])
+    db.save_movie(MovieDetails(1, "Heat", "Heat", 1995, 170, (), ()))
+    for index in (1, 2):
+        db.add_viewing(
+            user_id=1, tmdb_id=1, watched_on=date(2026, 7, index), watched_on_source="body",
+            rating=None, sent_at=datetime(2026, 7, 6), source_ref=f"r{index}",
+        )
+
+    assert db.last_viewing_id(1) == 2
+    db.cancel_viewing(2)
+    assert db.last_viewing_id(1) == 1
+    assert db.last_viewing_id(99) is None
+    assert db.set_rating(1, 3.5) is True
+    assert db.get_viewing(1)["rating"] == 3.5
+    assert db.set_rating(99, 3.5) is False

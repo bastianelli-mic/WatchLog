@@ -155,6 +155,25 @@ def _build_client(
             await interaction.response.send_message(outcome.text, view=view, ephemeral=True)
             view.message = await interaction.original_response()
 
+        @tree.command(name="voto", description="Dai un voto a una visione (di default l'ultima che hai registrato)", guild=guild)
+        @app_commands.describe(
+            voto="Da 0,5 a 5, a passi di 0,5",
+            numero="Numero della visione, come compare in /visioni (se manca, la tua ultima)",
+        )
+        async def rate(
+            interaction: discord.Interaction,
+            voto: app_commands.Range[float, 0.5, 5.0],
+            numero: app_commands.Range[int, 1] | None = None,
+        ) -> None:
+            problem = cancel_channel_error(config, interaction.channel_id)
+            if problem:
+                await interaction.response.send_message(problem, ephemeral=True)
+                return
+            outcome = await asyncio.to_thread(editor.set_rating, str(interaction.user.id), voto, numero)
+            await interaction.response.send_message(outcome.text, ephemeral=True)
+            if isinstance(outcome, Done):
+                await interaction.channel.send(outcome.announcement)
+
     return client
 
 

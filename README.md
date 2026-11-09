@@ -186,6 +186,12 @@ Gli errori (utente sconosciuto, data non valida) sono visibili solo a chi ha lan
 - Se confermi, scrive nel canale chi ha annullato cosa, così i cambiamenti restano visibili al gruppo.
 - L'annullamento è logico: la visione resta nel database ma sparisce da elenco e statistiche. Un comando per ripristinarla non c'è ancora.
 - Si usa nel canale delle statistiche o in quello delle visioni, e funziona anche senza la chiave TMDB.
+
+`/voto voto [numero]` dà un voto da 0,5 a 5, a passi di 0,5. Senza `numero` vale per l'ultima visione che hai registrato.
+- Possono votare l'autore della visione e i super user.
+- Non chiede conferma: per cambiare un voto basta riscriverlo.
+- Scrive nel canale chi ha dato quale voto a cosa, e se c'era già un voto mostra il vecchio e il nuovo.
+- Si usa negli stessi canali di `/annulla`.
 Per ogni token deve girare una sola istanza del bot.
 
 ## Flusso di lavoro consigliato

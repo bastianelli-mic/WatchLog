@@ -155,7 +155,7 @@ class Database:
         """La visione con utente e film, anche se annullata (`deleted_at` valorizzato); None se non esiste."""
         rows = self.query(
             "SELECT v.id AS id, v.user_id AS user_id, u.name AS user, v.watched_on AS watched_on, "
-            "v.deleted_at AS deleted_at, m.title AS title, m.year AS year "
+            "v.deleted_at AS deleted_at, v.rating AS rating, m.title AS title, m.year AS year "
             "FROM viewing v JOIN users u ON u.id = v.user_id JOIN movie m ON m.tmdb_id = v.movie_id "
             "WHERE v.id = ?",
             (viewing_id,),
@@ -168,6 +168,16 @@ class Database:
             "UPDATE viewing SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL", (viewing_id,)
         )
         return cursor.rowcount == 1
+
+    def last_viewing_id(self, user_id: int) -> int | None:
+        """L'ultima visione registrata (non annullata) dell'utente."""
+        return self._scalar(
+            "SELECT id FROM viewing WHERE user_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1", user_id
+        )
+
+    def set_rating(self, viewing_id: int, rating: float) -> bool:
+        """Imposta il voto di una visione; False se non esiste."""
+        return self._conn.execute("UPDATE viewing SET rating = ? WHERE id = ?", (rating, viewing_id)).rowcount == 1
 
     def has_viewing_same_day(self, user_id: int, tmdb_id: int, watched_on: date) -> bool:
         row = self._conn.execute(
