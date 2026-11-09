@@ -25,7 +25,7 @@ I file con i dati reali sono ignorati da git: stanno in `local/`, `data/` e `con
 | Cosa | Dove | Note |
 |---|---|---|
 | Chiave TMDB | `local/tmdb_api_key`, oppure variabile `TMDB_API_KEY` | Va bene la chiave API v3 (32 caratteri) o il token di lettura (stringa lunga che inizia con `eyJ`). Si ottengono gratis su themoviedb.org, nelle impostazioni del profilo, sezione API. |
-| Export della chat | `local/chat.txt` | Si ottiene con la funzione "Esporta chat" di WhatsApp, senza media. Vanno bene i formati Android e iPhone. |
+| Export della chat | `local/chat.txt` | Si ottiene con la funzione "Esporta chat" di WhatsApp, senza media. Vanno bene i formati Android e iPhone, con l'ora a 24 o a 12 ore (AM/PM) e la data d'invio giorno-mese o mese-giorno: l'ordine si deduce dal file. |
 | Utenti | `config/users.yaml` | Parti da `config/users.example.yaml`. |
 | Correzioni dei film | `config/corrections.yaml` | Facoltativo. Parti da `config/corrections.example.yaml`. |
 | Database | `data/watchlog.sqlite` | Creato dal primo import. |

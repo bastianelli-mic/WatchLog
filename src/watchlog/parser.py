@@ -1,4 +1,4 @@
-"""Parser dell'export di una chat WhatsApp (formati Android e iPhone, date gg/mm/aa).
+"""Parser dell'export di una chat WhatsApp (formati Android e iPhone, ora a 24 o a 12 ore, date gg/mm/aa o mm/gg/aa).
 
 Ogni messaggio utente ha la forma `data - titolo (anno)` con voto opzionale
 `[3.5]`. La data nel corpo è la data di visione; se manca si ripiega sulla
@@ -13,10 +13,12 @@ EDITED_MARKERS = ("<Questo messaggio è stato modificato>", "<This message was e
 
 _HEADERS = (
     # Android: `06/07/26, 00:45 - Nome: testo`
-    re.compile(r"^(\d{1,2}/\d{1,2}/\d{2,4}), (\d{1,2}:\d{2}) - (.*)$"),
-    # iPhone: `[06/07/26, 00:45:12] Nome: testo`
-    re.compile(r"^\[(\d{1,2}/\d{1,2}/\d{2,4}), (\d{1,2}:\d{2}(?::\d{2})?)\] (.*)$"),
+    re.compile(r"^(\d{1,2}/\d{1,2}/\d{2,4}), (\d{1,2}:\d{2}(?: ?[AP]M)?) - (.*)$"),
+    # iPhone: `[06/07/26, 00:45:12] Nome: testo`, anche con ora a 12 ore (`[12/18/25, 2:52:52 PM] Nome: testo`);
+    # le righe di sistema hanno un trattino dopo la parentesi: `[12/18/25, 2:52:52 PM] - testo`
+    re.compile(r"^\[(\d{1,2}/\d{1,2}/\d{2,4}), (\d{1,2}:\d{2}(?::\d{2})?(?: ?[AP]M)?)\] (.*)$"),
 )
+_TIME = re.compile(r"(?P<hour>\d{1,2}):(?P<minute>\d{2})(?::(?P<second>\d{2}))?(?: ?(?P<meridiem>[AP]M))?$")
 _BODY_DATE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})\s+-\s+(.*)$")
 # Prefisso che sembra una data ma non lo è (`0000`, `2203/2026`, `05/07/26`): non va letto come titolo.
 # Un numero semplice come `2001 - Odissea nello spazio` resta invece un titolo.
@@ -31,7 +33,8 @@ _DELETED = {
 }
 _FILM = re.compile(r"^(?P<title>.+?)\s*\((?P<year>\d{4})\)\s*(?:\[(?P<rating>[^\]]*)\])?$")
 _RATING = re.compile(r"^\d(?:[.,][05])?$")
-_STRIP_INVISIBLE = {ord(char): None for char in "﻿‎‏"}
+# Caratteri invisibili da togliere; lo spazio stretto che alcuni telefoni mettono prima di AM/PM diventa uno spazio.
+_CLEAN_CHARS = {**{ord(char): None for char in "\ufeff\u200e\u200f"}, ord("\u202f"): " "}
 
 
 @dataclass(frozen=True)
@@ -78,7 +81,7 @@ def parse_film_text(text: str) -> tuple[str, int] | None:
 def parse_line(author: str, sent_at: datetime, text: str) -> ParseResult:
     """Interpreta il testo di un solo messaggio (per esempio dal bot) come una riga d'export."""
     result = ParseResult()
-    lines = text.translate(_STRIP_INVISIBLE).splitlines() or [""]
+    lines = text.translate(_CLEAN_CHARS).splitlines() or [""]
     _parse_message(_Message(line_no=1, sent_at=sent_at, author=author, lines=lines), result)
     return result
 
@@ -93,17 +96,21 @@ def parse_export(text: str) -> ParseResult:
 
 
 def _group_messages(text: str) -> list[_Message]:
+    lines = text.translate(_CLEAN_CHARS).splitlines()
+    matches = [next((m for header in _HEADERS if (m := header.match(line))), None) for line in lines]
+    month_first = _month_first([m.group(1) for m in matches if m])
     messages: list[_Message] = []
-    for line_no, line in enumerate(text.translate(_STRIP_INVISIBLE).splitlines(), start=1):
-        match = next((m for header in _HEADERS if (m := header.match(line))), None)
+    for line_no, (line, match) in enumerate(zip(lines, matches), start=1):
         if match:
-            author, separator, payload = match.group(3).partition(": ")
+            rest = match.group(3)
+            author, separator, payload = rest.partition(": ")
+            is_system = rest.startswith("- ") or not separator
             messages.append(
                 _Message(
                     line_no=line_no,
-                    sent_at=_parse_sent_at(match.group(1), match.group(2)),
-                    author=author if separator else None,
-                    lines=[payload] if separator else [],
+                    sent_at=_parse_sent_at(match.group(1), match.group(2), month_first),
+                    author=None if is_system else author,
+                    lines=[] if is_system else [payload],
                 )
             )
         elif messages:
@@ -111,10 +118,23 @@ def _group_messages(text: str) -> list[_Message]:
     return messages
 
 
-def _parse_sent_at(day: str, time: str) -> datetime:
-    year_format = "%Y" if len(day.rsplit("/", 1)[1]) == 4 else "%y"
-    time_format = "%H:%M:%S" if time.count(":") == 2 else "%H:%M"
-    return datetime.strptime(f"{day}, {time}", f"%d/%m/{year_format}, {time_format}")
+def _month_first(dates: list[str]) -> bool:
+    """Ordine della data d'invio, dedotto da tutto il file: un primo numero sopra 12 è un giorno, un secondo sopra 12
+    è un giorno e quindi il mese viene prima. Senza indizi si resta su giorno prima, come nei telefoni italiani."""
+    pairs = [tuple(int(number) for number in date_text.split("/")[:2]) for date_text in dates]
+    if any(first > 12 for first, _ in pairs):
+        return False
+    return any(second > 12 for _, second in pairs)
+
+
+def _parse_sent_at(date_text: str, time_text: str, month_first: bool) -> datetime:
+    first, second, year = (int(number) for number in date_text.split("/"))
+    day, month = (second, first) if month_first else (first, second)
+    time = _TIME.match(time_text)
+    hour = int(time["hour"])
+    if time["meridiem"]:
+        hour = hour % 12 + (12 if time["meridiem"] == "PM" else 0)
+    return datetime(year + 2000 if year < 100 else year, month, day, hour, int(time["minute"]), int(time["second"] or 0))
 
 
 def _parse_message(message: _Message, result: ParseResult) -> None:

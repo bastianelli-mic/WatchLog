@@ -316,3 +316,61 @@ class TestParseLine:
         entry = parse_line("Mario", self.SENT, "05/07/2026 - Good Fortune\n(2025)").entries[0]
 
         assert (entry.title, entry.year) == ("Good Fortune", 2025)
+
+
+class TestMonthFirstTwelveHourFormat:
+    """Export con `[mm/dd/yy, h:mm:ss AM|PM] Nome: testo` e righe di sistema `[...] - testo`."""
+
+    def test_month_first_is_deduced_when_some_header_has_a_second_number_above_12(self):
+        text = (
+            "[12/18/25, 12:27:20 PM] Simone: 17/12/2025 - Dune parte 2 (2024)\n"
+            "[12/11/25, 2:53:47 PM] Simone: 11/12/2025 - Heat (1995)\n"
+        )
+
+        sent = [e.sent_at for e in parse_export(text).entries]
+
+        assert sent == [datetime(2025, 12, 18, 12, 27, 20), datetime(2025, 12, 11, 14, 53, 47)]
+
+    def test_day_first_is_kept_when_some_header_has_a_first_number_above_12(self):
+        text = "[18/12/25, 10:27:20 AM] Simone: Heat (1995)\n[11/12/25, 2:53:47 PM] Simone: Ronin (1998)\n"
+
+        sent = [e.sent_at for e in parse_export(text).entries]
+
+        assert sent == [datetime(2025, 12, 18, 10, 27, 20), datetime(2025, 12, 11, 14, 53, 47)]
+
+    def test_an_ambiguous_file_defaults_to_day_first(self):
+        entry = parse_export("[05/07/26, 10:00:00 AM] Simone: Heat (1995)\n").entries[0]
+
+        assert entry.sent_at == datetime(2026, 7, 5, 10, 0, 0)
+
+    @pytest.mark.parametrize(
+        ("time", "expected"),
+        [
+            ("12:05:00 AM", (0, 5, 0)),
+            ("12:24:38 PM", (12, 24, 38)),
+            ("1:01:59 PM", (13, 1, 59)),
+            ("11:59:59 PM", (23, 59, 59)),
+            ("2:52 PM", (14, 52, 0)),
+        ],
+    )
+    def test_twelve_hour_times_are_converted(self, time, expected):
+        entry = parse_export(f"[12/18/25, {time}] Simone: Heat (1995)\n").entries[0]
+
+        assert (entry.sent_at.hour, entry.sent_at.minute, entry.sent_at.second) == expected
+
+    def test_a_narrow_no_break_space_before_the_meridiem_is_accepted(self):
+        entry = parse_export("[12/18/25, 2:52:52\u202fPM] Simone: Heat (1995)\n").entries[0]
+
+        assert entry.sent_at == datetime(2025, 12, 18, 14, 52, 52)
+
+    def test_system_lines_with_a_dash_are_ignored_even_when_they_contain_a_colon(self):
+        text = (
+            "[12/11/25, 2:52:52 PM] - Tu ha creato il gruppo.\n"
+            "[12/11/25, 2:52:53 PM] - Tu ha cambiato l'oggetto: Film\n"
+            "[12/18/25, 2:53:47 PM] Simone: 11/12/2025 - Heat (1995)\n"
+        )
+
+        result = parse_export(text)
+
+        assert len(result.entries) == 1
+        assert result.anomalies == []
