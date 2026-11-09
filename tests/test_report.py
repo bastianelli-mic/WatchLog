@@ -48,12 +48,12 @@ class TestRenderStats:
 
         blocks = render_stats(compute_stats(db, user="mario", since=since, until=until), None, "mario", since, until)
 
-        assert blocks[0].splitlines()[0] == "Statistiche: mario (dal 2026-07-01 al 2026-07-31)"
+        assert blocks[0].splitlines()[0] == "Statistiche: mario (dal 01/07/2026 al 31/07/2026)"
 
 
 class TestPeriodText:
     def test_forms(self):
         assert period_text(None, None) == ""
-        assert period_text(date(2026, 7, 1), None) == " (dal 2026-07-01)"
-        assert period_text(None, date(2026, 7, 31)) == " (fino al 2026-07-31)"
-        assert period_text(date(2026, 7, 1), date(2026, 7, 31)) == " (dal 2026-07-01 al 2026-07-31)"
+        assert period_text(date(2026, 7, 1), None) == " (dal 01/07/2026)"
+        assert period_text(None, date(2026, 7, 31)) == " (fino al 31/07/2026)"
+        assert period_text(date(2026, 7, 1), date(2026, 7, 31)) == " (dal 01/07/2026 al 31/07/2026)"

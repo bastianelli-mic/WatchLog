@@ -95,7 +95,7 @@ class TestRenderPages:
 
         assert len(pages) == 1
         assert pages[0].startswith("```\nVisioni: gruppo")
-        assert "#7" in pages[0] and "2026-08-08" in pages[0] and "mario" in pages[0]
+        assert "#7" in pages[0] and "08/08/2026" in pages[0] and "mario" in pages[0]
         assert "Heat (1995)" in pages[0] and "★4,5" in pages[0]
 
     def test_integer_rating_has_no_decimals(self):
@@ -128,7 +128,7 @@ class TestRenderPages:
     def test_pages_never_exceed_the_message_size_even_with_long_titles(self):
         rows = [row(i, title="Titolo molto lungo " * 4) for i in range(1, 80)]
 
-        pages = render_pages(rows, "Visioni: gruppo (dal 2026-01-01 al 2026-12-31)", show_user=True)
+        pages = render_pages(rows, "Visioni: gruppo (dal 01/01/2026 al 31/12/2026)", show_user=True)
 
         assert len(pages) > 1
         assert all(len(page) <= 2000 for page in pages)

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from watchlog.bot import sync_users
 from watchlog.config import ConfigError, load_corrections, load_discord_config, load_discord_token, load_users
+from watchlog.dates import format_date, parse_date
 from watchlog.db import Database
 from watchlog.edits import ViewingEditor
 from watchlog.importer import ImportReport, corrections_template, import_chat
@@ -39,8 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     stats_cmd = commands.add_parser("stats", help="statistiche del gruppo, o di un utente con --user")
     stats_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
     stats_cmd.add_argument("--user", help="nome interno dell'utente (come in users.yaml)")
-    stats_cmd.add_argument("--dal", type=_iso_date, help="solo visioni da questa data (AAAA-MM-GG), inclusa")
-    stats_cmd.add_argument("--al", type=_iso_date, help="solo visioni fino a questa data (AAAA-MM-GG), inclusa")
+    stats_cmd.add_argument("--dal", type=_date_argument, help="solo visioni da questa data (gg/mm/aaaa), inclusa")
+    stats_cmd.add_argument("--al", type=_date_argument, help="solo visioni fino a questa data (gg/mm/aaaa), inclusa")
 
     bot_cmd = commands.add_parser("bot", help="avvia il bot Discord (comando /stats)")
     bot_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
@@ -160,11 +161,11 @@ def _stats(db_path: Path, user: str | None, since: date | None, until: date | No
     return 0
 
 
-def _iso_date(text: str) -> date:
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"data non valida: {text!r} (usa AAAA-MM-GG)") from None
+def _date_argument(text: str) -> date:
+    parsed = parse_date(text)
+    if parsed is None:
+        raise argparse.ArgumentTypeError(f"data non valida: {text!r} (usa gg/mm/aaaa)")
+    return parsed
 
 
 def _print_import_report(report: ImportReport, dry_run: bool) -> None:
@@ -193,14 +194,14 @@ def _print_import_report(report: ImportReport, dry_run: bool) -> None:
             "di una visione già registrata, quindi non inseriti:"
         )
         for entry in report.probable_duplicates:
-            print(f"  riga {entry.line_no} [{entry.author}] visto il {entry.watched_on}: {entry.title} ({entry.year})")
+            print(f"  riga {entry.line_no} [{entry.author}] visto il {format_date(entry.watched_on)}: {entry.title} ({entry.year})")
 
     if report.suspicious_dates:
         print(f"\nDate sospette ({len(report.suspicious_dates)}): visione molto prima dell'invio, o dopo:")
         for entry in report.suspicious_dates:
             print(
-                f"  riga {entry.line_no} [{entry.author}] visto il {entry.watched_on}, "
-                f"inviato il {entry.sent_at.date()}: {entry.title} ({entry.year})"
+                f"  riga {entry.line_no} [{entry.author}] visto il {format_date(entry.watched_on)}, "
+                f"inviato il {format_date(entry.sent_at.date())}: {entry.title} ({entry.year})"
             )
 
     if report.anomalies:
@@ -236,7 +237,7 @@ def _parse(chat: Path) -> int:
     for entry in result.entries:
         rating = f" [{entry.rating:g}]" if entry.rating is not None else ""
         print(
-            f"{entry.watched_on} ({entry.watched_on_source:7}) "
+            f"{format_date(entry.watched_on)} ({entry.watched_on_source:7}) "
             f"{entry.author}: {entry.title} ({entry.year}){rating}"
         )
 

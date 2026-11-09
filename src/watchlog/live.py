@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 
+from watchlog.dates import format_date
 from watchlog.db import Database
 from watchlog.parser import WRONG_DATE_REASON, parse_line
 from watchlog.resolver import resolve
@@ -157,7 +158,7 @@ class LiveService:
 
     def _after_film_is_known(self, db: Database, draft: Draft) -> Outcome:
         if db.has_viewing_same_day(draft.user_id, draft.tmdb_id, draft.watched_on):
-            text = f"Hai già registrato «{draft.title} ({draft.year})» per il {italian_date(draft.watched_on)}. Lo registro di nuovo?"
+            text = f"Hai già registrato «{draft.title} ({draft.year})» per il {format_date(draft.watched_on)}. Lo registro di nuovo?"
             return Ask("duplicate", text, (Option("Registra di nuovo", "yes"), Option("Annulla", "no")), draft)
         return self._record(db, draft)
 
@@ -178,14 +179,10 @@ class LiveService:
             return Rejected(_ALREADY_RECORDED)
 
         movie = db.query("SELECT title, year FROM movie WHERE tmdb_id = ?", (draft.tmdb_id,))[0]
-        text = f"Registrato: {movie['title']} ({movie['year']}), visto il {italian_date(draft.watched_on)}"
+        text = f"Registrato: {movie['title']} ({movie['year']}), visto il {format_date(draft.watched_on)}"
         if draft.rating is not None:
             text += f", voto {draft.rating:g}".replace(".", ",")
         if draft.watched_on_source == "sent_at":
             reason = "la data nel messaggio non era valida" if draft.wrong_date else "nessuna data nel messaggio"
             text += f" ({reason}: ho usato la data di invio)"
         return Recorded(text)
-
-
-def italian_date(day: date) -> str:
-    return day.strftime("%d/%m/%Y")

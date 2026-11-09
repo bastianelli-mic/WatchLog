@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import date
 
+from watchlog.dates import format_iso
 from watchlog.db import Database
 from watchlog.resolver import normalize
 from watchlog.stats import UnknownUser, viewing_filters
@@ -78,7 +79,7 @@ def render_pages(
 def _line(row: ViewingRow, id_width: int, user_width: int) -> str:
     title = row.title if len(row.title) <= TITLE_MAX else row.title[: TITLE_MAX - 1] + "…"
     label = f"{title} ({row.year})" if row.year else title
-    parts = [f"#{row.id:<{id_width}}", row.watched_on]
+    parts = [f"#{row.id:<{id_width}}", format_iso(row.watched_on)]
     if user_width:
         parts.append(f"{row.user:<{user_width}}")
     parts.append(label)

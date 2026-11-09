@@ -75,11 +75,11 @@ class TestStatsReply:
 
     def test_user_and_period(self, tmp_path):
         reply = stats_reply(
-            seeded_db_file(tmp_path), CONFIG, channel_id=100, user="mario", since_text="2026-07-01", until_text="2026-07-07"
+            seeded_db_file(tmp_path), CONFIG, channel_id=100, user="mario", since_text="01/07/2026", until_text="07/07/2026"
         )
 
         text = "\n".join(reply.messages)
-        assert "Statistiche: mario (dal 2026-07-01 al 2026-07-07)" in text
+        assert "Statistiche: mario (dal 01/07/2026 al 07/07/2026)" in text
         assert "visualizzazioni: 1" in text
         assert "Classifica utenti:" not in text
 
@@ -100,7 +100,7 @@ class TestStatsReply:
 
         assert reply.ephemeral is True
         assert "ieri" in reply.messages[0]
-        assert "AAAA-MM-GG" in reply.messages[0]
+        assert "gg/mm/aaaa" in reply.messages[0]
 
     def test_missing_database_is_a_private_error(self, tmp_path):
         reply = stats_reply(tmp_path / "manca.sqlite", CONFIG, channel_id=100)
@@ -203,10 +203,10 @@ class TestViewingsReply:
         assert reply.messages == ["Le statistiche si chiedono nel canale <#100>."]
 
     def test_user_title_and_dates_filter(self, tmp_path):
-        reply = self.reply(tmp_path, user="mario", since_text="2026-07-06", title="heat")
+        reply = self.reply(tmp_path, user="mario", since_text="06/07/2026", title="heat")
 
         text = reply.messages[0]
-        assert "Visioni: mario (dal 2026-07-06)" in text
+        assert "Visioni: mario (dal 06/07/2026)" in text
         assert "titolo «heat»" in text
         assert "1 visioni" in text or "1 visione" in text
 
@@ -214,11 +214,11 @@ class TestViewingsReply:
         reply = self.reply(tmp_path, periodo="settimana")  # 08/07/2026 è un mercoledì: 06–12 luglio
 
         text = reply.messages[0]
-        assert "dal 2026-07-06 al 2026-07-12" in text
+        assert "dal 06/07/2026 al 12/07/2026" in text
         assert "2 visioni" in text  # le visioni del 6 e del 9 luglio
 
     def test_period_and_dates_together_are_rejected_privately(self, tmp_path):
-        reply = self.reply(tmp_path, periodo="mese", since_text="2026-07-01")
+        reply = self.reply(tmp_path, periodo="mese", since_text="01/07/2026")
 
         assert reply.ephemeral is True
         assert "periodo" in reply.messages[0] and "dal" in reply.messages[0]
@@ -275,7 +275,7 @@ class TestStatsPeriodShortcut:
         reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="settimana", today=self.TODAY)
 
         text = "\n".join(reply.messages)
-        assert "Statistiche: gruppo (dal 2026-07-06 al 2026-07-12)" in text
+        assert "Statistiche: gruppo (dal 06/07/2026 al 12/07/2026)" in text
         assert "visualizzazioni: 2" in text  # le visioni del 6 e del 9 luglio
 
     def test_period_shortcut_combines_with_a_user(self, tmp_path):
@@ -284,7 +284,7 @@ class TestStatsPeriodShortcut:
         assert "visualizzazioni: 2" in "\n".join(reply.messages)
 
     def test_period_and_dates_together_are_rejected_privately(self, tmp_path):
-        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="mese", since_text="2026-07-01", today=self.TODAY)
+        reply = stats_reply(seeded_db_file(tmp_path), CONFIG, 100, periodo="mese", since_text="01/07/2026", today=self.TODAY)
 
         assert reply.ephemeral is True
         assert "periodo" in reply.messages[0]

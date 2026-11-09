@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from watchlog.config import DiscordConfig, load_users
+from watchlog.dates import parse_date
 from watchlog.db import Database
 from watchlog.listing import list_viewings, render_pages
 from watchlog.periods import period_range
@@ -181,7 +182,7 @@ def _private(message: str) -> Reply:
 def _parse_date(text: str | None) -> date | None:
     if text is None:
         return None
-    try:
-        return date.fromisoformat(text.strip())
-    except ValueError:
-        raise ValueError(f"Data non valida: {text!r} (usa AAAA-MM-GG).") from None
+    parsed = parse_date(text)
+    if parsed is None:
+        raise ValueError(f"Data non valida: {text!r} (usa gg/mm/aaaa).")
+    return parsed

@@ -3,22 +3,20 @@
 Non dipende da discord.py né da TMDB: l'adattatore mostra gli esiti e raccoglie la risposta dei bottoni.
 """
 
-import re
 from collections.abc import Iterator
 from contextlib import contextmanager
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 
+from watchlog.dates import format_date, format_iso, parse_date
 from watchlog.db import Database
-from watchlog.live import MAX_CANDIDATES, Ask, Cancelled, Option, Rejected, italian_date
+from watchlog.live import MAX_CANDIDATES, Ask, Cancelled, Option, Rejected
 from watchlog.parser import parse_film_text
 from watchlog.resolver import resolve
 from watchlog.tmdb import TmdbError
 
-_DATE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
 _TMDB_DOWN = "TMDB non risponde, riprova tra poco."
 _UNKNOWN_USER = "Non ti riconosco: chiedi di aggiungere il tuo discord_id a users.yaml."
 
@@ -49,7 +47,7 @@ class ViewingEditor:
                 return checked
             actor, viewing = checked
             owner = "" if viewing["user_id"] == actor["id"] else f", di {viewing['user']}"
-            text = f"Annullare la visione #{viewing_id}: {_label(viewing)} del {italian_date_of(viewing)}{owner}?"
+            text = f"Annullare la visione #{viewing_id}: {_label(viewing)} del {format_iso(viewing["watched_on"])}{owner}?"
             options = (Option("Sì, annulla", "yes"), Option("No", "no"))
             return Ask("cancel", text, options, viewing_id=viewing_id, actor=discord_id)
 
@@ -72,7 +70,7 @@ class ViewingEditor:
             owner = "" if viewing["user_id"] == actor["id"] else f" di {viewing['user']}"
             announcement = (
                 f"{actor['name']} ha annullato la visione #{ask.viewing_id}: "
-                f"{_label(viewing)} del {italian_date_of(viewing)}{owner}."
+                f"{_label(viewing)} del {format_iso(viewing["watched_on"])}{owner}."
             )
             return Done(f"Annullata la visione #{ask.viewing_id}.", announcement)
 
@@ -84,7 +82,7 @@ class ViewingEditor:
             return Rejected("Dimmi cosa cambiare: la data, il film o entrambi.")
         new_date = None
         if date_text is not None:
-            new_date = _parse_date(date_text)
+            new_date = parse_date(date_text)
             if new_date is None:
                 return Rejected("Data non valida: scrivila come gg/mm/aaaa, per esempio 05/07/2026.")
             if new_date > self._today():
@@ -142,8 +140,8 @@ class ViewingEditor:
         owner = "" if viewing["user"] == self._actor_name(db, ask.actor) else f", di {viewing['user']}"
         after_day = ask.new_date or date.fromisoformat(viewing["watched_on"])
         text = (
-            f"Modificare la visione #{ask.viewing_id}{owner}: {_label(viewing)} del {italian_date_of(viewing)} → "
-            f"{new_label or _label(viewing)} del {italian_date(after_day)}?"
+            f"Modificare la visione #{ask.viewing_id}{owner}: {_label(viewing)} del {format_iso(viewing["watched_on"])} → "
+            f"{new_label or _label(viewing)} del {format_date(after_day)}?"
         )
         return replace(ask, kind="edit", text=text, options=(Option("Sì, modifica", "yes"), Option("No", "no")))
 
@@ -170,7 +168,7 @@ class ViewingEditor:
             owner = "" if viewing["user_id"] == actor["id"] else f" di {viewing['user']}"
             announcement = (
                 f"{actor['name']} ha modificato la visione #{ask.viewing_id}{owner}: "
-                f"{_label(viewing)} del {italian_date_of(viewing)} → {_label(after)} del {italian_date_of(after)}."
+                f"{_label(viewing)} del {format_iso(viewing["watched_on"])} → {_label(after)} del {format_iso(after["watched_on"])}."
             )
             return Done(f"Modificata la visione #{ask.viewing_id}.", announcement)
 
@@ -200,7 +198,7 @@ class ViewingEditor:
             previous = f" (da {_number(viewing['rating'])} a {_number(rating)})" if viewing["rating"] is not None else ""
             announcement = (
                 f"{actor['name']} ha dato {_number(rating)} a {_label(viewing)}, "
-                f"visione #{viewing_id} del {italian_date_of(viewing)}{owner}{previous}."
+                f"visione #{viewing_id} del {format_iso(viewing["watched_on"])}{owner}{previous}."
             )
             return Done(f"Voto {_number(rating)} registrato per la visione #{viewing_id}.", announcement)
 
@@ -229,17 +227,6 @@ class ViewingEditor:
         return users[0], viewing
 
 
-def _parse_date(text: str) -> date | None:
-    match = _DATE.match(text.strip())
-    if not match:
-        return None
-    day, month, year = (int(number) for number in match.groups())
-    try:
-        return date(year, month, day)
-    except ValueError:
-        return None
-
-
 def _edit_problem(db: Database, viewing: dict, ask: Ask) -> Rejected | None:
     """Perché la modifica non ha senso: non cambia nulla, o la visione risulterebbe uguale a un'altra."""
     tmdb_id = ask.new_tmdb_id or viewing["tmdb_id"]
@@ -262,6 +249,3 @@ def _number(value: float) -> str:
 def _label(viewing: dict) -> str:
     return f"{viewing['title']} ({viewing['year']})" if viewing["year"] else viewing["title"]
 
-
-def italian_date_of(viewing: dict) -> str:
-    return italian_date(date.fromisoformat(viewing["watched_on"]))

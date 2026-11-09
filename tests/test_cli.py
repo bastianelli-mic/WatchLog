@@ -259,7 +259,7 @@ def test_import_report_lists_suspicious_dates(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Date sospette (1)" in out
     assert "riga 4" in out
-    assert "visto il 2025-01-05, inviato il 2026-07-06" in out
+    assert "visto il 05/01/2025, inviato il 06/07/2026" in out
 
 
 def test_import_report_without_suspicious_dates_has_no_section(tmp_path, monkeypatch, capsys):
@@ -279,23 +279,23 @@ def test_stats_prints_runtime_streak_weekday_and_busiest_day_sections(tmp_path, 
     assert "durata media: 2 h 0 min" in out
     assert "film più lungo: Heat (2 h 0 min)" in out
     assert "film più corto: Heat (2 h 0 min)" in out
-    assert "serie consecutiva più lunga: 2 giorni (dal 2026-07-05 al 2026-07-06)" in out
+    assert "serie consecutiva più lunga: 2 giorni (dal 05/07/2026 al 06/07/2026)" in out
     assert "Giorni della settimana:" in out
     assert "Domenica: 1" in out
     assert "Lunedì: 1" in out
     assert "Giorni con più film:" in out
-    assert "2026-07-05: 1" in out
+    assert "05/07/2026: 1" in out
     assert "2026-07: 3 visualizzazioni, 6 h 0 min" in out
 
 
 def test_stats_period_filters_and_is_shown_in_the_title(tmp_path, capsys):
     path = _seeded_stats_db(tmp_path)
 
-    exit_code = main(["stats", "--db", str(path), "--dal", "2026-07-06", "--al", "2026-07-31"])
+    exit_code = main(["stats", "--db", str(path), "--dal", "06/07/2026", "--al", "31/07/2026"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
-    assert "Statistiche: gruppo (dal 2026-07-06 al 2026-07-31)" in out
+    assert "Statistiche: gruppo (dal 06/07/2026 al 31/07/2026)" in out
     assert "visualizzazioni: 2" in out
 
 

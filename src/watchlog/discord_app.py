@@ -79,8 +79,8 @@ def _build_client(
     @app_commands.describe(
         utente="Nome dell'utente; senza, il gruppo intero",
         periodo="Scorciatoia per il periodo; non si combina con dal e al",
-        dal="Solo visioni da questa data (AAAA-MM-GG)",
-        al="Solo visioni fino a questa data (AAAA-MM-GG)",
+        dal="Solo visioni da questa data (gg/mm/aaaa)",
+        al="Solo visioni fino a questa data (gg/mm/aaaa)",
     )
     @app_commands.choices(periodo=PERIOD_CHOICES)
     async def stats(
@@ -111,8 +111,8 @@ def _build_client(
     @app_commands.describe(
         utente="Nome dell'utente; senza, il gruppo intero",
         periodo="Scorciatoia per il periodo; non si combina con dal e al",
-        dal="Solo visioni da questa data (AAAA-MM-GG)",
-        al="Solo visioni fino a questa data (AAAA-MM-GG)",
+        dal="Solo visioni da questa data (gg/mm/aaaa)",
+        al="Solo visioni fino a questa data (gg/mm/aaaa)",
         titolo="Solo i film il cui titolo contiene questo testo",
     )
     @app_commands.choices(periodo=PERIOD_CHOICES)

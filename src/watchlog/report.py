@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from watchlog.dates import format_date, format_iso
 from watchlog.stats import GroupExtras, Stats
 
 _WEEKDAYS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
@@ -9,11 +10,11 @@ _WEEKDAYS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabat
 
 def period_text(since: date | None, until: date | None) -> str:
     if since and until:
-        return f" (dal {since} al {until})"
+        return f" (dal {format_date(since)} al {format_date(until)})"
     if since:
-        return f" (dal {since})"
+        return f" (dal {format_date(since)})"
     if until:
-        return f" (fino al {until})"
+        return f" (fino al {format_date(until)})"
     return ""
 
 
@@ -45,7 +46,7 @@ def _summary(stats: Stats) -> list[str]:
         lines.append(f"film più corto: {stats.shortest_film.title} ({_duration(stats.shortest_film.minutes)})")
     if stats.longest_streak is not None:
         streak = stats.longest_streak
-        span = f"dal {streak.start} al {streak.end}" if streak.days > 1 else streak.start
+        span = f"dal {format_iso(streak.start)} al {format_iso(streak.end)}" if streak.days > 1 else format_iso(streak.start)
         lines.append(f"serie consecutiva più lunga: {streak.days} {'giorni' if streak.days != 1 else 'giorno'} ({span})")
     if stats.average_rating is None:
         lines.append("voto medio: nessuna visualizzazione votata")
@@ -68,7 +69,7 @@ def _sections(stats: Stats) -> list[tuple[str, list[str]]]:
             "Giorni della settimana:",
             [f"{name}: {count}" for name, count in zip(_WEEKDAYS, stats.weekdays)] if any(stats.weekdays) else [],
         ),
-        ("Giorni con più film:", [f"{day}: {count} film" for day, count in stats.busiest_days]),
+        ("Giorni con più film:", [f"{format_iso(day)}: {count} film" for day, count in stats.busiest_days]),
         ("Film rivisti più volte:", [f"{r.user}: {r.title} ×{r.times}" for r in stats.most_rewatched]),
     ]
 
