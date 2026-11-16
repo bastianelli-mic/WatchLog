@@ -65,7 +65,9 @@ class Database:
     @classmethod
     def open(cls, path: Path) -> "Database":
         path.parent.mkdir(parents=True, exist_ok=True)
-        return cls(sqlite3.connect(path))
+        connection = sqlite3.connect(path)
+        connection.execute("PRAGMA journal_mode = WAL")  # bot e API leggono e scrivono lo stesso file insieme
+        return cls(connection)
 
     @classmethod
     def in_memory(cls, copy_of: Path | None = None) -> "Database":

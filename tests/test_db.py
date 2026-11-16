@@ -248,3 +248,11 @@ def test_update_viewing_and_same_day_check_excluding_itself(tmp_path):
     assert (viewing["tmdb_id"], viewing["watched_on"], viewing["rating"]) == (2, "2026-07-02", 3)
     assert db.query("SELECT watched_on_source FROM viewing")[0]["watched_on_source"] == "body"
     assert db.update_viewing(99, 2, date(2026, 7, 2), "body") is False
+
+
+def test_file_database_uses_the_write_ahead_log(tmp_path):
+    """Bot e API aprono lo stesso file da due processi: in WAL chi legge non aspetta chi scrive."""
+    db = Database.open(tmp_path / "w.sqlite")
+
+    assert db.query("PRAGMA journal_mode") == [{"journal_mode": "wal"}]
+    db.close()
