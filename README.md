@@ -4,6 +4,7 @@ Registro dei film visti da un gruppo di amici, con le statistiche per utente e d
 Oggi si alimenta importando l'export di una chat WhatsApp, che contiene un messaggio per ogni visione.
 Per ogni film cerca i metadati su TMDB (durata, generi, regista) e salva la visione per l'utente che l'ha scritta.
 Un bot Discord registra le visioni scritte in un canale e risponde al comando `/stats` con le statistiche.
+Una pagina web, per ora in sola lettura e pensata per la rete locale, mostra statistiche ed elenco delle visioni.
 
 Tutti i comandi si lanciano con `watchlog` e hanno l'opzione `--help`, per esempio `watchlog stats --help`.
 
@@ -218,6 +219,32 @@ Gli errori (utente sconosciuto, data non valida) sono visibili solo a chi ha lan
 - Non resta traccia dei valori precedenti, se non nell'annuncio nel canale.
 Per ogni token deve girare una sola istanza del bot.
 
+### `api`: la pagina web
+
+```
+watchlog api --host 0.0.0.0
+```
+
+Avvia un'API in sola lettura sul database e, alla radice, la pagina web: da un altro dispositivo della rete locale si apre `http://<indirizzo-del-computer>:8000`.
+Senza `--host` risponde solo dal computer stesso (`127.0.0.1`); `--port` cambia la porta, `--db` il database.
+Non c'è login: va usata solo in rete locale.
+
+- La pagina ha due sezioni, **Statistiche** (riquadri e grafici) e **Visioni** (elenco con ricerca per titolo).
+- In alto si sceglie l'utente, o `Gruppo` per tutti, e il periodo: sempre, anno, mese, settimana, oggi o un intervallo di date. Il browser ricorda l'utente scelto.
+- Le date si mostrano `gg/mm/aaaa`; l'API le vuole e le restituisce in formato ISO (`aaaa-mm-gg`).
+- L'API è descritta in `http://<indirizzo>:8000/docs`: `GET /api/users`, `GET /api/stats` e `GET /api/viewings`, con i filtri facoltativi `user`, `since`, `until` (e `title` per le visioni). Senza `user` valgono i dati di tutti.
+
+La pagina è un progetto a parte in `web/` (React, Vite e TypeScript) e va compilata una volta, con Node.js 20 o superiore:
+
+```
+cd web
+npm install
+npm run build
+```
+
+Il risultato finisce in `web/dist`, che `watchlog api` serve da solo (`--web` per un'altra cartella).
+Per lavorare sulla pagina, con `watchlog api` avviato, `npm run dev` la serve con il ricaricamento automatico e passa le chiamate `/api` all'API.
+
 ## Flusso di lavoro consigliato
 
 1. Esporta la chat e mettila in `local/chat.txt`.
@@ -261,4 +288,6 @@ Il report dell'import ti suggerisce già le righe, in tre forme:
 ```
 
 I test non usano la rete: TMDB è simulato.
+
+Quelli della pagina web (date, periodi, assi dei grafici) si lanciano da `web/` con `npm test`.
 Il campione `tests/fixtures/sample_chat.txt` contiene nomi di fantasia ed è usato dai test.
