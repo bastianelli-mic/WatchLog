@@ -55,11 +55,22 @@ def main(argv: list[str] | None = None) -> int:
     bot_cmd.add_argument("--discord-config", type=Path, default=Path("config/discord.yaml"))
     bot_cmd.add_argument("--users", type=Path, default=Path("config/users.yaml"))
 
+    api_cmd = commands.add_parser("api", help="avvia l'API in sola lettura e la pagina web")
+    api_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
+    api_cmd.add_argument("--web", type=Path, default=Path("web/dist"), help="pagina web compilata; se manca, solo API")
+    api_cmd.add_argument("--host", default="127.0.0.1", help="0.0.0.0 per raggiungerla dalla rete locale")
+    api_cmd.add_argument("--port", type=int, default=8000)
+
     args = parser.parse_args(argv)
     if args.command == "parse":
         return _parse(args.chat)
     if args.command == "stats":
         return _stats(args.db, args.user, args.dal, args.al, args.dettaglio)
+    if args.command == "api":
+        from watchlog import api  # import tardivo: gli altri comandi non ne hanno bisogno
+
+        api.serve(args.db, args.web, args.host, args.port)
+        return 0
     try:
         if args.command == "resolve":
             return _resolve(args.film)

@@ -468,3 +468,22 @@ def test_stats_unknown_detail_is_rejected(tmp_path, capsys):
 
     assert exit_info.value.code == 2
     assert "boh" in capsys.readouterr().err
+
+
+def test_api_serves_database_and_web_page_on_local_address_by_default(monkeypatch):
+    calls = []
+    monkeypatch.setattr("watchlog.api.serve", lambda *args: calls.append(args))
+
+    exit_code = main(["api"])
+
+    assert exit_code == 0
+    assert calls == [(Path("data/watchlog.sqlite"), Path("web/dist"), "127.0.0.1", 8000)]
+
+
+def test_api_address_and_paths_can_be_changed(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("watchlog.api.serve", lambda *args: calls.append(args))
+
+    main(["api", "--db", str(tmp_path / "w.sqlite"), "--web", str(tmp_path), "--host", "0.0.0.0", "--port", "9000"])
+
+    assert calls == [(tmp_path / "w.sqlite", tmp_path, "0.0.0.0", 9000)]
