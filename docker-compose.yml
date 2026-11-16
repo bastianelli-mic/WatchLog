@@ -1,11 +1,24 @@
+# Due servizi dalla stessa immagine sullo stesso database: il bot Discord e l'API con la pagina web.
+x-watchlog: &watchlog
+  build: .
+  image: watchlog:latest
+  restart: unless-stopped
+
 services:
-  watchlog:
-    build: .
-    image: watchlog:latest
-    container_name: watchlog
-    restart: unless-stopped
+  bot:
+    <<: *watchlog
+    container_name: watchlog-bot
     volumes:
       - ./data:/app/data
       - ./config:/app/config:ro
       - ./local/discord_token:/app/local/discord_token:ro
       - ./local/tmdb_api_key:/app/local/tmdb_api_key:ro
+
+  api:
+    <<: *watchlog
+    container_name: watchlog-api
+    command: ["watchlog", "api", "--host", "0.0.0.0"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data # anche in scrittura: in modalità WAL chi legge usa il file -shm accanto al database

@@ -33,7 +33,7 @@ I file con i dati reali sono ignorati da git: stanno in `local/`, `data/` e `con
 | Token del bot Discord | `local/discord_token`, oppure variabile `DISCORD_TOKEN` | Solo per il comando `bot`. |
 | Server, canali e super user Discord | `config/discord.yaml` | Solo per il comando `bot`. Parti da `config/discord.example.yaml`. |
 
-Per il bot Discord: la guida per creare l'app e il token è in [docs/discord-app.md](docs/discord-app.md), quella per installarlo sul Synology in [docs/deploy-synology.md](docs/deploy-synology.md).
+Per il bot Discord: la guida per creare l'app e il token è in [docs/discord-app.md](docs/discord-app.md), quella per installarlo con la pagina web sul Raspberry Pi in [docs/deploy-raspberry.md](docs/deploy-raspberry.md).
 
 Esempio di `config/users.yaml`:
 
@@ -244,6 +244,7 @@ npm run build
 
 Il risultato finisce in `web/dist`, che `watchlog api` serve da solo (`--web` per un'altra cartella).
 Per lavorare sulla pagina, con `watchlog api` avviato, `npm run dev` la serve con il ricaricamento automatico e passa le chiamate `/api` all'API.
+Nell'immagine Docker la pagina si compila da sola: in `docker-compose.yml` il servizio `api` gira accanto al bot, sullo stesso database.
 
 ## Flusso di lavoro consigliato
 
