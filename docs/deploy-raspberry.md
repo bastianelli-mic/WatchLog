@@ -36,13 +36,13 @@ Esci e rientra via SSH perché il gruppo nuovo valga, poi controlla con `docker 
 Dal tuo computer, nella cartella del progetto:
 
 ```
-rsync -av --exclude '.venv' --exclude '.git' --exclude 'tests' --exclude 'docs' --exclude '__pycache__' --exclude '*.egg-info' --exclude 'local/chat.txt' --exclude 'web/node_modules' --exclude 'web/dist' --exclude 'data' ./ UTENTE@IP_PI:watchlog/
+rsync -av --exclude '.venv' --exclude '.git' --exclude 'tests' --exclude 'docs' --exclude '__pycache__' --exclude '*.egg-info' --exclude 'local/chat*.txt' --exclude 'web/node_modules' --exclude 'web/dist' --exclude 'data' ./ UTENTE@IP_PI:watchlog/
 ```
 
 Cosa fa ogni parte:
 - `rsync` copia solo ciò che è cambiato, quindi si rilancia così com'è per aggiornare il codice.
 - `-a` conserva permessi e date, `-v` mostra i file copiati.
-- Ogni `--exclude` salta un percorso. `local/chat.txt` è la chat esportata, che sul Pi non serve; `web/node_modules` e `web/dist` si ricreano nel build.
+- Ogni `--exclude` salta un percorso. `local/chat*.txt` sono gli export della chat, compresi quelli conservati con la data nel nome, che sul Pi non servono; `web/node_modules` e `web/dist` si ricreano nel build.
 - `--exclude 'data'` tiene fuori il database: si copia una volta sola, al passo 3, perché poi quello del Pi è il riferimento e non va sovrascritto.
 - `./` con la barra finale copia il contenuto della cartella corrente, non la cartella stessa.
 - `UTENTE@IP_PI:watchlog/` è la destinazione: la cartella `watchlog` nella home dell'utente sul Pi, creata se manca.
