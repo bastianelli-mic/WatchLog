@@ -3,12 +3,14 @@
 import hashlib
 import json
 from dataclasses import dataclass, field
+from datetime import date, datetime
 
 from watchlog.config import Corrections
+from watchlog.dates import format_date
 from watchlog.db import Database
 from watchlog.parser import Anomaly, Entry, parse_export
 from watchlog.resolver import Resolution, resolve
-from watchlog.tmdb import Candidate
+from watchlog.tmdb import Candidate, MovieDetails
 
 MAX_DAYS_BEFORE_SEND = 31  # oltre, la data di visione scritta in chat è probabilmente un refuso
 
@@ -27,15 +29,40 @@ class ImportReport:
     probable_duplicates: list[Entry] = field(default_factory=list)  # non inseriti: la visione c'era già
 
 
-def import_chat(text: str, db: Database, client, corrections: Corrections) -> ImportReport:
-    """Importa l'export. Idempotente: una riga già importata non viene riletta né risolta di nuovo.
+@dataclass(frozen=True)
+class PlannedViewing:
+    user_id: int
+    tmdb_id: int
+    watched_on: date
+    watched_on_source: str
+    rating: float | None
+    sent_at: datetime
+    source_ref: str
 
-    L'import è atomico: se TMDB fallisce a metà, nulla viene salvato.
+
+@dataclass
+class ImportPlan:
+    """Cosa l'import inserirebbe, deciso senza scrivere nel database."""
+
+    report: ImportReport
+    movies: dict[int, MovieDetails]  # solo i film nuovi, da salvare
+    viewings: list[PlannedViewing]
+
+
+def plan_import(text: str, db: Database, client, corrections: Corrections) -> ImportPlan:
+    """Legge l'export e prepara l'import, senza scrivere: risolve i film su TMDB e decide cosa inserire.
+
+    Le chiamate di rete avvengono qui, fuori dalla transazione di scrittura: `apply_import` poi
+    tiene il lock SQLite solo per il tempo delle INSERT.
     """
     parsed = parse_export(text)
     report = ImportReport(entries=len(parsed.entries), anomalies=parsed.anomalies)
     report.suspicious_dates = [entry for entry in parsed.entries if _is_suspicious_date(entry)]
     film_ids: dict[tuple[str, int], int | None] = {}
+    movies: dict[int, MovieDetails] = {}
+    planned_refs: set[str] = set()
+    planned_same_day: set[tuple[int, int, date]] = set()
+    viewings: list[PlannedViewing] = []
 
     for entry in parsed.entries:
         found = db.find_user_by_chat_name(entry.author)
@@ -45,7 +72,7 @@ def import_chat(text: str, db: Database, client, corrections: Corrections) -> Im
         user_id, chat_name = found
 
         source_ref = _source_ref(entry, chat_name)
-        if db.has_viewing(source_ref):
+        if source_ref in planned_refs or db.has_viewing(source_ref):
             report.duplicates += 1
             continue
 
@@ -57,27 +84,118 @@ def import_chat(text: str, db: Database, client, corrections: Corrections) -> Im
             report.unresolved_viewings += 1
             continue
 
-        if db.has_viewing_same_day(user_id, tmdb_id, entry.watched_on):
+        same_day = (user_id, tmdb_id, entry.watched_on)
+        if same_day in planned_same_day or db.has_viewing_same_day(user_id, tmdb_id, entry.watched_on):
             # Di solito è un messaggio modificato e riesportato (cambia il testo, quindi la chiave): non lo si raddoppia.
             report.probable_duplicates.append(entry)
             continue
 
-        if not db.has_movie(tmdb_id):
-            db.save_movie(client.details(tmdb_id))
+        if not db.has_movie(tmdb_id) and tmdb_id not in movies:
+            movies[tmdb_id] = client.details(tmdb_id)
             report.new_movies += 1
-        db.add_viewing(
-            user_id=user_id,
-            tmdb_id=tmdb_id,
-            watched_on=entry.watched_on,
-            watched_on_source=entry.watched_on_source,
-            rating=entry.rating,
-            sent_at=entry.sent_at,
-            source_ref=source_ref,
+
+        planned_refs.add(source_ref)
+        planned_same_day.add(same_day)
+        viewings.append(
+            PlannedViewing(
+                user_id=user_id,
+                tmdb_id=tmdb_id,
+                watched_on=entry.watched_on,
+                watched_on_source=entry.watched_on_source,
+                rating=entry.rating,
+                sent_at=entry.sent_at,
+                source_ref=source_ref,
+            )
         )
         report.inserted += 1
 
+    return ImportPlan(report, movies, viewings)
+
+
+def apply_import(db: Database, plan: ImportPlan) -> ImportReport:
+    """Scrive il piano in un'unica transazione breve. Restituisce il report, aggiornato con gli inserimenti reali."""
+    for movie in plan.movies.values():
+        db.save_movie(movie)
+    inserted = 0
+    for viewing in plan.viewings:
+        if db.add_viewing(
+            user_id=viewing.user_id,
+            tmdb_id=viewing.tmdb_id,
+            watched_on=viewing.watched_on,
+            watched_on_source=viewing.watched_on_source,
+            rating=viewing.rating,
+            sent_at=viewing.sent_at,
+            source_ref=viewing.source_ref,
+        ):
+            inserted += 1
+        else:
+            plan.report.duplicates += 1
     db.commit()
-    return report
+    plan.report.inserted = inserted
+    return plan.report
+
+
+def import_chat(text: str, db: Database, client, corrections: Corrections) -> ImportReport:
+    """Importa l'export in due fasi. Idempotente: una riga già importata non viene riletta né risolta di nuovo.
+
+    L'import è atomico: se TMDB fallisce durante il piano, nessuna visione viene salvata.
+    """
+    return apply_import(db, plan_import(text, db, client, corrections))
+
+
+def render_import_report(report: ImportReport, dry_run: bool) -> str:
+    """Il report dell'import come testo, uguale per CLI e sito."""
+    lines = [
+        "Import (dry-run: nessuna scrittura)" if dry_run else "Import",
+        f"visualizzazioni nel file: {report.entries}",
+        f"inseriti: {report.inserted}",
+        f"già presenti: {report.duplicates}",
+        f"nuovi film: {report.new_movies}",
+    ]
+
+    if report.unmapped_authors:
+        lines.append("")
+        lines.append("Utenti non mappati (aggiungili a users.yaml):")
+        for author, count in report.unmapped_authors.items():
+            lines.append(f"  {author}: {count} visualizzazioni escluse")
+
+    if report.unresolved:
+        lines.append("")
+        lines.append(
+            f"Film da risolvere ({len(report.unresolved)} distinti, "
+            f"{report.unresolved_viewings} visualizzazioni escluse).\n"
+            "Controlla ogni riga e copiala in corrections.yaml; le righe commentate vanno prima completate:\n"
+        )
+        lines.append(corrections_template(report.unresolved))
+
+    if report.probable_duplicates:
+        lines.append("")
+        lines.append(
+            f"Probabili doppioni ({len(report.probable_duplicates)}): stesso utente, film e giorno "
+            "di una visione già registrata, quindi non inseriti:"
+        )
+        for entry in report.probable_duplicates:
+            lines.append(
+                f"  riga {entry.line_no} [{entry.author}] visto il {format_date(entry.watched_on)}: "
+                f"{entry.title} ({entry.year})"
+            )
+
+    if report.suspicious_dates:
+        lines.append("")
+        lines.append(f"Date sospette ({len(report.suspicious_dates)}): visione molto prima dell'invio, o dopo:")
+        for entry in report.suspicious_dates:
+            lines.append(
+                f"  riga {entry.line_no} [{entry.author}] visto il {format_date(entry.watched_on)}, "
+                f"inviato il {format_date(entry.sent_at.date())}: {entry.title} ({entry.year})"
+            )
+
+    if report.anomalies:
+        lines.append("")
+        lines.append(f"Anomalie del parser ({len(report.anomalies)}):")
+        for found in report.anomalies:
+            lines.append(f"  riga {found.line_no} [{found.author}] {found.reason}: {found.raw}")
+
+    return "\n".join(lines)
 
 
 def corrections_template(unresolved: list[Resolution]) -> str:

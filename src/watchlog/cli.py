@@ -8,7 +8,7 @@ from watchlog.config import ConfigError, load_corrections, load_discord_config, 
 from watchlog.dates import format_date, parse_bound
 from watchlog.db import Database
 from watchlog.edits import ViewingEditor
-from watchlog.importer import ImportReport, corrections_template, import_chat
+from watchlog.importer import import_chat, render_import_report
 from watchlog.live import LiveService
 from watchlog.parser import parse_export, parse_film_text
 from watchlog.resolver import Resolution, resolve
@@ -135,11 +135,12 @@ def _import(args: argparse.Namespace) -> int:
     db = Database.in_memory(copy_of=args.db) if args.dry_run else Database.open(args.db)
     try:
         db.sync_users(users)
+        db.commit()  # chiude subito la scrittura: il piano dell'import non deve tenere il lock
         report = import_chat(text, db, _make_client(), corrections)
     finally:
         db.close()
 
-    _print_import_report(report, args.dry_run)
+    print(render_import_report(report, args.dry_run))
     return 0
 
 
@@ -192,48 +193,6 @@ def _bound_argument(text: str, end: bool) -> date:
     if parsed is None:
         raise argparse.ArgumentTypeError(f"data non valida: {text!r} (usa gg/mm/aaaa, mm/aaaa o aaaa)")
     return parsed
-
-
-def _print_import_report(report: ImportReport, dry_run: bool) -> None:
-    print("Import (dry-run: nessuna scrittura)" if dry_run else "Import")
-    print(f"visualizzazioni nel file: {report.entries}")
-    print(f"inseriti: {report.inserted}")
-    print(f"già presenti: {report.duplicates}")
-    print(f"nuovi film: {report.new_movies}")
-
-    if report.unmapped_authors:
-        print("\nUtenti non mappati (aggiungili a users.yaml):")
-        for author, count in report.unmapped_authors.items():
-            print(f"  {author}: {count} visualizzazioni escluse")
-
-    if report.unresolved:
-        print(
-            f"\nFilm da risolvere ({len(report.unresolved)} distinti, "
-            f"{report.unresolved_viewings} visualizzazioni escluse).\n"
-            "Controlla ogni riga e copiala in corrections.yaml; le righe commentate vanno prima completate:\n"
-        )
-        print(corrections_template(report.unresolved))
-
-    if report.probable_duplicates:
-        print(
-            f"\nProbabili doppioni ({len(report.probable_duplicates)}): stesso utente, film e giorno "
-            "di una visione già registrata, quindi non inseriti:"
-        )
-        for entry in report.probable_duplicates:
-            print(f"  riga {entry.line_no} [{entry.author}] visto il {format_date(entry.watched_on)}: {entry.title} ({entry.year})")
-
-    if report.suspicious_dates:
-        print(f"\nDate sospette ({len(report.suspicious_dates)}): visione molto prima dell'invio, o dopo:")
-        for entry in report.suspicious_dates:
-            print(
-                f"  riga {entry.line_no} [{entry.author}] visto il {format_date(entry.watched_on)}, "
-                f"inviato il {format_date(entry.sent_at.date())}: {entry.title} ({entry.year})"
-            )
-
-    if report.anomalies:
-        print(f"\nAnomalie del parser ({len(report.anomalies)}):")
-        for found in report.anomalies:
-            print(f"  riga {found.line_no} [{found.author}] {found.reason}: {found.raw}")
 
 
 def _print_resolution(resolution: Resolution) -> None:

@@ -1,10 +1,18 @@
 from datetime import date, datetime
 
+import pytest
+
 from watchlog.config import Corrections, UserConfig, load_corrections
 from watchlog.db import Database
-from watchlog.importer import corrections_template, import_chat
+from watchlog.importer import (
+    apply_import,
+    corrections_template,
+    import_chat,
+    plan_import,
+    render_import_report,
+)
 from watchlog.resolver import resolve
-from watchlog.tmdb import Candidate, MovieDetails
+from watchlog.tmdb import Candidate, MovieDetails, TmdbError
 
 USERS = [UserConfig("mario", "Mario Rossi", None), UserConfig("franco", "Franco Rossi", "111")]
 
@@ -346,3 +354,93 @@ class TestProbableDuplicates:
         report = import_chat(self.EDITED_TWICE, db, client, Corrections({}))
 
         assert (report.inserted, report.probable_duplicates) == (1, [])
+
+
+class TestPlanAndApply:
+    """Il piano non scrive: le chiamate TMDB restano fuori dalla transazione, che dura solo l'apply."""
+
+    def test_planning_does_not_write(self, tmp_path):
+        db, client = make(tmp_path)
+
+        plan = plan_import(CHAT, db, client, Corrections({}))
+
+        assert plan.report.inserted == 2
+        assert len(plan.viewings) == 2
+        assert db.list_viewings() == []
+        assert db.query("SELECT COUNT(*) AS count FROM movie")[0]["count"] == 0
+
+    def test_applying_the_plan_writes_movies_and_viewings(self, tmp_path):
+        db, client = make(tmp_path)
+
+        report = apply_import(db, plan_import(CHAT, db, client, Corrections({})))
+
+        assert report.inserted == 2
+        assert sorted(v["user"] for v in db.list_viewings()) == ["franco", "mario"]
+        assert db.has_movie(949) is True
+
+    def test_applying_the_same_plan_twice_does_not_duplicate(self, tmp_path):
+        db, client = make(tmp_path)
+        plan = plan_import(CHAT, db, client, Corrections({}))
+        apply_import(db, plan)
+
+        report = apply_import(db, plan)
+
+        assert (report.inserted, report.duplicates) == (0, 2)
+        assert len(db.list_viewings()) == 2
+
+    def test_planning_keeps_the_first_of_two_same_day_lines(self, tmp_path):
+        db, client = make(tmp_path)
+        chat = (
+            "06/07/26, 00:45 - Mario Rossi: 05/07/2026 - Heat (1995)\n"
+            "06/07/26, 00:46 - Mario Rossi: 05/07/2026 - Heat (1995)\n"
+        )
+
+        plan = plan_import(chat, db, client, Corrections({}))
+
+        assert (plan.report.inserted, len(plan.report.probable_duplicates)) == (1, 1)
+        assert len(plan.viewings) == 1
+
+    def test_planning_sees_identical_messages_in_the_same_minute(self, tmp_path):
+        db, client = make(tmp_path)
+        line = "06/07/26, 00:45 - Mario Rossi: 05/07/2026 - Heat (1995)\n"
+
+        plan = plan_import(line * 2, db, client, Corrections({}))
+
+        assert (plan.report.inserted, plan.report.duplicates) == (1, 1)
+        assert len(plan.viewings) == 1
+
+    def test_planning_fetches_details_once_for_the_same_new_film(self, tmp_path):
+        db, client = make(tmp_path)
+
+        plan = plan_import(CHAT, db, client, Corrections({}))
+
+        assert client.details_calls == [949]
+        assert plan.report.new_movies == 1
+        assert [movie.tmdb_id for movie in plan.movies.values()] == [949]
+
+    def test_a_tmdb_error_while_planning_leaves_the_database_untouched(self, tmp_path):
+        db, _ = make(tmp_path)
+
+        class BrokenClient:
+            def search(self, title):
+                return [candidate(949, 1995, "Heat")]
+
+            def details(self, tmdb_id):
+                raise TmdbError("TMDB non raggiungibile")
+
+        with pytest.raises(TmdbError):
+            plan_import(CHAT, db, BrokenClient(), Corrections({}))
+
+        assert db.list_viewings() == []
+        assert db.query("SELECT COUNT(*) AS count FROM movie")[0]["count"] == 0
+
+    def test_report_text_marks_the_dry_run_and_lists_the_sections(self, tmp_path):
+        db, client = make(tmp_path)
+
+        text = render_import_report(plan_import(CHAT, db, client, Corrections({})).report, dry_run=True)
+
+        assert text.startswith("Import (dry-run: nessuna scrittura)")
+        assert "visualizzazioni nel file: 3" in text
+        assert "inseriti: 2" in text
+        assert "Utenti non mappati" in text
+        assert "Giuseppe Verdi: 1" in text
