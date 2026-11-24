@@ -4,7 +4,7 @@ Registro dei film visti da un gruppo di amici, con le statistiche per utente e d
 Oggi si alimenta importando l'export di una chat WhatsApp, che contiene un messaggio per ogni visione.
 Per ogni film cerca i metadati su TMDB (durata, generi, regista) e salva la visione per l'utente che l'ha scritta.
 Un bot Discord registra le visioni scritte in un canale e risponde al comando `/stats` con le statistiche.
-Una pagina web, pensata per la rete locale, mostra statistiche ed elenco delle visioni, permette di inserirne una e di importare un export della chat.
+Una pagina web, pensata per la rete locale, mostra statistiche ed elenco delle visioni e permette di inserirne una, importare un export della chat, correggerne data e film, annullarla e darle un voto.
 
 Tutti i comandi si lanciano con `watchlog` e hanno l'opzione `--help`, per esempio `watchlog stats --help`.
 
@@ -229,18 +229,22 @@ watchlog api --host 0.0.0.0
 
 Avvia l'API sul database e, alla radice, la pagina web: da un altro dispositivo della rete locale si apre `http://<indirizzo-del-computer>:8000`.
 Senza `--host` risponde solo dal computer stesso (`127.0.0.1`); `--port` cambia la porta, `--db` il database, `--users` e `--corrections` i file di configurazione.
-Inserimento e import usano la chiave TMDB e leggono `config/users.yaml` e `config/corrections.yaml`.
+Inserimento e modifica del film usano la chiave TMDB; l'import legge anche `config/users.yaml` e `config/corrections.yaml`.
 
-- La pagina ha tre sezioni: **Statistiche** (riquadri e grafici), **Visioni** (elenco con ricerca per titolo) e **Aggiungi** (nuova visione e import della chat).
+- La pagina ha tre sezioni: **Statistiche** (riquadri e grafici), **Visioni** (elenco con ricerca per titolo e azioni) e **Aggiungi** (nuova visione e import della chat).
 - In Statistiche e Visioni si sceglie in alto l'utente, o `Gruppo` per tutti, e il periodo: sempre, anno, mese, settimana, oggi o un intervallo di date. Il browser ricorda l'utente scelto.
 - Le date si mostrano `gg/mm/aaaa`; l'API le vuole e le restituisce in formato ISO (`aaaa-mm-gg`).
+- **Visioni**: ogni riga ha due numeri. `#` è la posizione nell'elenco filtrato (`1` = la più vecchia); `ID` è l'identificativo fisso della visione, lo stesso che compare in `/visioni` ed è quello da usare in `/modifica` e `/annulla`.
+  I pulsanti **Modifica**, **Voto** e **Annulla** aprono un pannello sotto la riga: si cambiano data e film (con i candidati di TMDB se il titolo è ambiguo), si dà un voto da 0,5 a 5, oppure si annulla. L'annullamento è logico: la visione sparisce da elenco e statistiche e non si può ripristinare dalla pagina.
 - **Aggiungi → Nuova visione**: l'autore è l'utente scelto in alto; con `Gruppo` il form chiede di sceglierne uno. Il film si scrive come in chat, `Titolo (anno)`; la data vuota vale oggi; il voto è facoltativo.
   Se TMDB è incerto, il form mostra i candidati; se lo stesso utente ha già visto quel film nello stesso giorno, chiede conferma prima di registrarlo di nuovo.
 - **Aggiungi → Importa una chat WhatsApp**: si sceglie il file `.txt` esportato. **Analizza** fa un dry-run senza scrivere, **Importa** registra le visioni nuove. Il report ha gli stessi contenuti della CLI e si può copiare. L'import è idempotente, quindi si può rilanciare; la prima volta può richiedere qualche minuto perché interroga TMDB per ogni film nuovo. Utenti e correzioni si modificano nei file, non dalla pagina.
 - L'API è descritta in `http://<indirizzo>:8000/docs`: `GET /api/users`, `GET /api/stats` e `GET /api/viewings`, con i filtri facoltativi `user`, `since`, `until` (e `title` per le visioni). Senza `user` valgono i dati di tutti.
-  Le scritture sono `POST /api/viewings` (una visione) e `POST /api/import` (testo dell'export, con `?dry_run=true` per la sola analisi).
+  Le scritture sono `POST /api/viewings` (una visione), `PATCH /api/viewings/{id}` (data e film), `DELETE /api/viewings/{id}` (annullamento logico), `PUT /api/viewings/{id}/rating` (voto) e `POST /api/import` (testo dell'export, con `?dry_run=true` per la sola analisi).
+  Le modifiche rispondono `409` con `status`, `message` e, se il film è ambiguo, `candidates` da ripresentare con `tmdb_id`.
 
-**Attenzione:** non c'è login. Chiunque raggiunga la pagina sulla rete locale può leggere, inserire e importare.
+**Attenzione:** non c'è login. Chiunque raggiunga la pagina sulla rete locale può leggere, inserire, importare, modificare, annullare e votare qualsiasi visione.
+Le azioni della pagina non hanno un autore e non vengono annunciate nel canale Discord.
 Non pubblicare la porta `8000` su Internet; se serve l'accesso da fuori, metti davanti un proxy con autenticazione.
 
 La pagina è un progetto a parte in `web/` (React, Vite e TypeScript) e va compilata una volta, con Node.js 20 o superiore:
@@ -263,7 +267,7 @@ Nell'immagine Docker la pagina si compila da sola: in `docker-compose.yml` il se
 4. Aggiungi gli utenti mancanti e compila `config/corrections.yaml` (vedi sotto). Ripeti dal punto 3 finché il report non ha più sezioni da sistemare.
 5. Lancia `watchlog import local/chat.txt` e poi `watchlog stats`.
 6. Per aggiornare lo storico, esporta di nuovo la chat e rilancia l'import: verranno aggiunte solo le visioni nuove.
-7. Dalla pagina web (`watchlog api`) puoi anche inserire una singola visione o importare un export senza usare la riga di comando.
+7. Dalla pagina web (`watchlog api`) puoi anche inserire una visione, importare un export, correggerne una, annullarla o darle un voto senza usare la riga di comando.
 
 ### Compilare `corrections.yaml`
 
@@ -292,6 +296,8 @@ Il report dell'import ti suggerisce già le righe, in tre forme:
 | `Database non trovato` | Lancia prima un import vero: il dry-run non crea il database. |
 | Dalla pagina, `Chiave TMDB mancante` o `File non trovato` | Nel container `api` manca un mount o un file. Controlla `docker-compose.yml` e che `local/tmdb_api_key` e `config/users.yaml` esistano. |
 | La pagina dice `API non raggiungibile` | `watchlog api` non è avviato, oppure il container `api` non è in esecuzione. |
+| Dalla pagina, `Non esiste la visione ID` o `è già stata annullata` | L'elenco è vecchio: un altro dispositivo l'ha appena cambiata. Ricarica la pagina. |
+| Dalla pagina, `C'è già una visione … dello stesso film in quel giorno` | La modifica creerebbe un doppione: cambia la data o il film. |
 | Un film finisce sempre tra quelli da risolvere | Aggiungi una voce a `config/corrections.yaml`. |
 
 ## Test
@@ -302,5 +308,5 @@ Il report dell'import ti suggerisce già le righe, in tre forme:
 
 I test non usano la rete: TMDB è simulato.
 
-Quelli della pagina web (date, periodi, assi dei grafici, messaggi di errore dell'API) si lanciano da `web/` con `npm test`.
+Quelli della pagina web (date, periodi, assi dei grafici, messaggi di errore dell'API, corpo della modifica) si lanciano da `web/` con `npm test`.
 Il campione `tests/fixtures/sample_chat.txt` contiene nomi di fantasia ed è usato dai test.

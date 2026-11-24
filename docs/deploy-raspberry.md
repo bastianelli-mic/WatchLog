@@ -1,6 +1,6 @@
 # Installare WatchLog sul Raspberry Pi
 
-Guida passo per passo per far girare WatchLog sul Raspberry Pi 3 in due container con riavvio automatico: il bot Discord e la pagina web, che permette anche di inserire una visione e importare un export della chat.
+Guida passo per passo per far girare WatchLog sul Raspberry Pi 3 in due container con riavvio automatico: il bot Discord e la pagina web, che permette anche di inserire una visione, importare un export della chat, correggere data e film, annullare e votare.
 Le immagini si costruiscono sul Pi stesso, quindi l'architettura ARM non richiede nulla di speciale.
 Il build sul Pi non è ancora stato provato: il primo avvio è la verifica.
 
@@ -9,7 +9,7 @@ Il build sul Pi non è ancora stato provato: il primo avvio è la verifica.
 - **Raspberry Pi OS Lite a 64 bit**. Sul Pi, `dpkg --print-architecture` deve rispondere `arm64`: con il sistema a 32 bit (`armhf`) alcune dipendenze non hanno pacchetti pronti.
 - Accesso SSH al Pi. Con Raspberry Pi Imager si attiva già nella scrittura della scheda, insieme a utente, password e nome del Pi (per esempio `watchlog`, che in rete diventa `watchlog.local`).
 - L'app Discord già creata, con il token in `local/discord_token` (vedi `docs/discord-app.md`).
-- La chiave TMDB in `local/tmdb_api_key`, che serve al bot e alla pagina (inserimento e import dal sito).
+- La chiave TMDB in `local/tmdb_api_key`, che serve al bot e alla pagina (inserimento, import e cambio film dal sito).
 - `config/discord.yaml`, `config/users.yaml` e, se serve, `config/corrections.yaml` compilati, e il database `data/watchlog.sqlite` già importato.
 
 Negli esempi `UTENTE@IP_PI` sta per l'utente creato sul Pi e il suo indirizzo, per esempio `mario@watchlog.local`.
@@ -98,8 +98,9 @@ Se invece legge "Inserimento delle visioni spento", manca `input_channel_id` in 
 In Discord il bot risulta online: nel canale `#statistiche` prova `/stats`, nel canale delle visioni scrivi un film, per esempio `Heat (1995)`.
 Da un dispositivo della rete locale apri `http://IP_PI:8000` (o `http://watchlog.local:8000`): è la pagina web.
 Nella scheda **Aggiungi** prova a inserire un film e, se vuoi, importa un export: se manca la chiave TMDB, la pagina lo segnala e non salva nulla.
+Nella scheda **Visioni** controlla le colonne `#` e `ID` e i pulsanti **Modifica**, **Voto** e **Annulla**; per provarli senza toccare lo storico vero, usa una copia del database come spiegato nel README.
 
-La pagina non ha login: chiunque raggiunga il Pi sulla rete locale può leggere, inserire e importare. Non aprire la porta `8000` sul router e non pubblicarla su Internet.
+La pagina non ha login: chiunque raggiunga il Pi sulla rete locale può leggere, inserire, importare, modificare, annullare e votare. Le azioni della pagina non vengono annunciate nel canale Discord. Non aprire la porta `8000` sul router e non pubblicarla su Internet.
 
 Importante: **per ogni token deve girare una sola istanza del bot**. Se lo hai provato sul computer con `watchlog bot`, fermalo prima di avviare quello sul Pi, altrimenti ogni comando riceve due risposte e Discord segnala un errore.
 
