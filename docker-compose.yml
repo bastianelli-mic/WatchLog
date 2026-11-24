@@ -21,4 +21,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/app/data # anche in scrittura: in modalità WAL chi legge usa il file -shm accanto al database
+      - ./data:/app/data # anche in scrittura: bot e sito scrivono lo stesso database in modalità WAL
+      - ./config:/app/config:ro
+      - ./local/tmdb_api_key:/app/local/tmdb_api_key:ro
