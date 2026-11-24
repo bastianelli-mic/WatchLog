@@ -32,6 +32,7 @@ export function ViewingsView({ user, range }: { user: string; range: Range }) {
           <table className="viewings">
             <thead>
               <tr>
+                <th className="num fit">#</th>
                 <th className="fit">Data</th>
                 {showUser && <th className="fit">Utente</th>}
                 <th>Film</th>
@@ -39,8 +40,9 @@ export function ViewingsView({ user, range }: { user: string; range: Range }) {
               </tr>
             </thead>
             <tbody>
-              {data.map((row) => (
+              {data.map((row, index) => (
                 <tr key={row.id}>
+                  <td className="num-text fit muted">#{data.length - index}</td>
                   <td className="num-text fit">{formatDate(row.watched_on)}</td>
                   {showUser && <td className="fit">{row.user}</td>}
                   <td>
