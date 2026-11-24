@@ -67,6 +67,12 @@ export interface ViewingCreated {
   message: string;
 }
 
+export interface ViewingPatch {
+  watched_on?: string;
+  film?: string;
+  tmdb_id?: number;
+}
+
 export interface ImportSummary {
   entries: number;
   inserted: number;
@@ -155,11 +161,16 @@ export function useApi<T>(url: string): Loaded<T> {
   return state;
 }
 
-export async function postJson<T>(path: string, body: unknown): Promise<T> {
+export function postJson<T>(path: string, body: unknown): Promise<T> {
+  return sendJson<T>(path, "POST", body);
+}
+
+/** Una scrittura con il metodo indicato; senza corpo, come DELETE, non manda il Content-Type. */
+export async function sendJson<T>(path: string, method: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   return readJson<T>(response);
 }

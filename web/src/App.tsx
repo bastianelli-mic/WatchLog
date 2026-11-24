@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AddViewingView } from "./AddViewingView";
 import { useApi } from "./api";
 import { formatDate } from "./format";
@@ -32,11 +32,21 @@ export function App() {
   const [period, setPeriod] = useState<Period | "intervallo">("tutto");
   const [custom, setCustom] = useState<Range>({});
   const [tab, setTab] = useState<Tab>("statistiche");
+  const [flash, setFlash] = useState<string | null>(null);
   const onChanged = () => setRefresh((value) => value + 1);
+  const onEdited = (message: string) => {
+    setFlash(message);
+    onChanged();
+  };
 
   // Un nome ricordato che non esiste più (rinominato in users.yaml) vale come gruppo.
   const user = users.data && !users.data.includes(chosen) ? GROUP : chosen;
   const range = period === "intervallo" ? custom : periodRange(period, new Date());
+
+  // L'esito di una modifica resta finché non si cambia scheda o filtro.
+  useEffect(() => {
+    setFlash(null);
+  }, [tab, user, period, custom]);
 
   const chooseUser = (name: string) => {
     setChosen(name);
@@ -107,10 +117,17 @@ export function App() {
         )}
       </div>
       {tab !== "aggiungi" && <p className="scope">{describe(user, range)}</p>}
+      {flash && (
+        <p className="form-notice success flash" role="status">
+          {flash}
+        </p>
+      )}
 
       <main>
         {tab === "statistiche" && <StatsView key={`stats-${refresh}`} user={user} range={range} />}
-        {tab === "visioni" && <ViewingsView key={`viewings-${refresh}`} user={user} range={range} />}
+        {tab === "visioni" && (
+          <ViewingsView key={`viewings-${refresh}`} user={user} range={range} onEdited={onEdited} />
+        )}
         {tab === "aggiungi" && (
           <div className="cards">
             <AddViewingView user={user} users={users.data ?? []} onChanged={onChanged} />
