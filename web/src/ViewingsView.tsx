@@ -28,33 +28,48 @@ export function ViewingsView({ user, range }: { user: string; range: Range }) {
       ) : data.length === 0 ? (
         <p className="notice muted">Nessuna visione trovata con questi filtri.</p>
       ) : (
-        <div className={loading ? "table-scroll dim" : "table-scroll"}>
-          <table className="viewings">
-            <thead>
-              <tr>
-                <th className="num fit">#</th>
-                <th className="fit">Data</th>
-                {showUser && <th className="fit">Utente</th>}
-                <th>Film</th>
-                <th className="num fit">Voto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((row, index) => (
-                <tr key={row.id}>
-                  <td className="num-text fit muted">#{data.length - index}</td>
-                  <td className="num-text fit">{formatDate(row.watched_on)}</td>
-                  {showUser && <td className="fit">{row.user}</td>}
-                  <td>
-                    {row.title}
-                    {row.year !== null && <span className="muted"> ({row.year})</span>}
-                  </td>
-                  <td className="num fit">{row.rating === null ? <span className="muted">—</span> : formatRating(row.rating)}</td>
+        <>
+          <p className="list-legend muted">
+            <code>#</code> è la posizione in questo elenco (<code>1</code> = la più vecchia). <code>ID</code>{" "}
+            identifica la visione: non cambia con i filtri ed è lo stesso numero di <code>/visioni</code>,{" "}
+            <code>/modifica</code> e <code>/annulla</code>.
+          </p>
+          <div className={loading ? "table-scroll dim" : "table-scroll"}>
+            <table className="viewings">
+              <thead>
+                <tr>
+                  <th className="num fit" title="Posizione nell'elenco filtrato: 1 = la più vecchia">
+                    #
+                  </th>
+                  <th className="num fit" title="Identificativo fisso della visione: non cambia con i filtri">
+                    ID
+                  </th>
+                  <th className="fit">Data</th>
+                  {showUser && <th className="fit">Utente</th>}
+                  <th>Film</th>
+                  <th className="num fit">Voto</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {data.map((row, index) => (
+                  <tr key={row.id}>
+                    <td className="num-text fit muted">#{data.length - index}</td>
+                    <td className="num-text fit muted">{row.id}</td>
+                    <td className="num-text fit">{formatDate(row.watched_on)}</td>
+                    {showUser && <td className="fit">{row.user}</td>}
+                    <td>
+                      {row.title}
+                      {row.year !== null && <span className="muted"> ({row.year})</span>}
+                    </td>
+                    <td className="num fit">
+                      {row.rating === null ? <span className="muted">—</span> : formatRating(row.rating)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   );

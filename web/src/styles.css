@@ -574,6 +574,20 @@ th {
   font-size: 14px;
 }
 
+.list-legend {
+  margin: -4px 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.list-legend code {
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--hover);
+  font-size: 12px;
+}
+
 .search {
   flex: 1;
   max-width: 320px;
