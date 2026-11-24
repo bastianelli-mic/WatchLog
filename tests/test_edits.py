@@ -53,7 +53,7 @@ class TestRequestCancel:
         ask = editor.request_cancel(MARIO, 1)
 
         assert isinstance(ask, Ask) and ask.kind == "cancel"
-        assert "#1" in ask.text and "Heat - La sfida (1995)" in ask.text and "05/07/2026" in ask.text
+        assert "ID 1" in ask.text and "Heat - La sfida (1995)" in ask.text and "05/07/2026" in ask.text
         assert "di franco" not in ask.text
         assert [o.value for o in ask.options] == ["yes", "no"]
         assert len(viewings(path)) == 2  # niente è ancora cambiato
@@ -105,8 +105,8 @@ class TestAnswer:
         outcome = editor.answer(editor.request_cancel(MARIO, 1), "yes")
 
         assert isinstance(outcome, Done)
-        assert "#1" in outcome.text
-        assert "mario ha annullato la visione #1" in outcome.announcement
+        assert "ID 1" in outcome.text
+        assert "mario ha annullato la visione ID 1" in outcome.announcement
         assert "Heat - La sfida (1995)" in outcome.announcement
         assert viewings(path) == [("franco", "Heat - La sfida")]
 
@@ -115,7 +115,7 @@ class TestAnswer:
 
         outcome = editor.answer(editor.request_cancel(SUPER, 2), "yes")
 
-        assert "capo ha annullato la visione #2" in outcome.announcement
+        assert "capo ha annullato la visione ID 2" in outcome.announcement
         assert "di franco" in outcome.announcement
         assert viewings(path) == [("mario", "Heat - La sfida")]
 
@@ -160,9 +160,9 @@ class TestSetRating:
         outcome = editor.set_rating(MARIO, 4.5, 1)
 
         assert isinstance(outcome, Done)
-        assert "#1" in outcome.text and "4,5" in outcome.text
+        assert "ID 1" in outcome.text and "4,5" in outcome.text
         assert "mario ha dato 4,5 a Heat - La sfida (1995)" in outcome.announcement
-        assert "#1" in outcome.announcement
+        assert "ID 1" in outcome.announcement
         assert rating_of(path, 1) == 4.5
 
     def test_without_a_number_the_last_viewing_of_the_author_is_rated(self, setup):
@@ -170,7 +170,7 @@ class TestSetRating:
 
         outcome = editor.set_rating(FRANCO, 3)
 
-        assert isinstance(outcome, Done) and "#2" in outcome.text
+        assert isinstance(outcome, Done) and "ID 2" in outcome.text
         assert rating_of(path, 2) == 3
         assert rating_of(path, 1) is None
 
@@ -282,7 +282,7 @@ class TestRequestEdit:
         ask = editor.request_edit(MARIO, 1, date_text="06/07/2026")
 
         assert isinstance(ask, Ask) and ask.kind == "edit"
-        assert "#1" in ask.text and "05/07/2026" in ask.text and "06/07/2026" in ask.text
+        assert "ID 1" in ask.text and "05/07/2026" in ask.text and "06/07/2026" in ask.text
         assert [o.value for o in ask.options] == ["yes", "no"]
         assert stored(path, 1)["watched_on"] == "2026-07-05"
 
@@ -408,8 +408,8 @@ class TestAnswerEdit:
 
         outcome = editor.answer(ask, "yes")
 
-        assert isinstance(outcome, Done) and "#1" in outcome.text
-        assert "mario ha modificato la visione #1" in outcome.announcement
+        assert isinstance(outcome, Done) and "ID 1" in outcome.text
+        assert "mario ha modificato la visione ID 1" in outcome.announcement
         assert "Heat - La sfida (1995)" in outcome.announcement and "Film 745 (1999)" in outcome.announcement
         assert "05/07/2026" in outcome.announcement and "06/07/2026" in outcome.announcement
         viewing = stored(path, 1)
@@ -433,7 +433,7 @@ class TestAnswerEdit:
 
         outcome = editor.answer(editor.request_edit(SUPER, 2, date_text="06/07/2026"), "yes")
 
-        assert "capo ha modificato la visione #2" in outcome.announcement and "di franco" in outcome.announcement
+        assert "capo ha modificato la visione ID 2" in outcome.announcement and "di franco" in outcome.announcement
 
     def test_declining_changes_nothing(self, edit_setup):
         editor, path, _ = edit_setup

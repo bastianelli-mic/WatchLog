@@ -151,8 +151,8 @@ def _build_client(
 
     if editor is not None:
 
-        @tree.command(name="annulla", description="Annulla una visione: il numero compare in /visioni", guild=guild)
-        @app_commands.describe(numero="Numero della visione, come compare in /visioni")
+        @tree.command(name="annulla", description="Annulla una visione: l'ID compare in /visioni", guild=guild)
+        @app_commands.describe(numero="ID della visione, come compare in /visioni")
         async def cancel(interaction: discord.Interaction, numero: app_commands.Range[int, 1]) -> None:
             problem = cancel_channel_error(config, interaction.channel_id)
             if problem:
@@ -169,7 +169,7 @@ def _build_client(
 
         @tree.command(name="modifica", description="Cambia la data o il film di una visione", guild=guild)
         @app_commands.describe(
-            numero="Numero della visione, come compare in /visioni",
+            numero="ID della visione, come compare in /visioni",
             data="Nuova data, gg/mm/aaaa",
             film="Nuovo film, come Titolo (anno)",
         )
@@ -195,7 +195,7 @@ def _build_client(
         @tree.command(name="voto", description="Dai un voto a una visione (di default l'ultima che hai registrato)", guild=guild)
         @app_commands.describe(
             voto="Da 0,5 a 5, a passi di 0,5",
-            numero="Numero della visione, come compare in /visioni (se manca, la tua ultima)",
+            numero="ID della visione, come compare in /visioni (se manca, la tua ultima)",
         )
         async def rate(
             interaction: discord.Interaction,

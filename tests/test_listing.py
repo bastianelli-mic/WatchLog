@@ -95,7 +95,7 @@ class TestRenderPages:
 
         assert len(pages) == 1
         assert pages[0].startswith("```\nVisioni: gruppo")
-        assert "#7" in pages[0] and "08/08/2026" in pages[0] and "mario" in pages[0]
+        assert "ID 7" in pages[0] and "08/08/2026" in pages[0] and "mario" in pages[0]
         assert "Heat (1995)" in pages[0] and "★4,5" in pages[0]
 
     def test_integer_rating_has_no_decimals(self):
@@ -121,7 +121,7 @@ class TestRenderPages:
 
         assert len(pages) == 3
         body = [line for page in pages for line in page.splitlines()[2:-1]]
-        assert [int(line.split()[0][1:]) for line in body] == list(range(45, 0, -1))
+        assert [int(line.split()[1]) for line in body] == list(range(45, 0, -1))
         assert "pagina 1/3" in pages[0] and "pagina 3/3" in pages[2]
         assert "45 visioni" in pages[0]
 

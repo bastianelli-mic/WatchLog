@@ -79,7 +79,7 @@ def render_pages(
 def _line(row: ViewingRow, id_width: int, user_width: int) -> str:
     title = row.title if len(row.title) <= TITLE_MAX else row.title[: TITLE_MAX - 1] + "…"
     label = f"{title} ({row.year})" if row.year else title
-    parts = [f"#{row.id:<{id_width}}", format_iso(row.watched_on)]
+    parts = [f"ID {row.id:<{id_width}}", format_iso(row.watched_on)]
     if user_width:
         parts.append(f"{row.user:<{user_width}}")
     parts.append(label)

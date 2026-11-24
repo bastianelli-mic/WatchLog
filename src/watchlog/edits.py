@@ -47,7 +47,7 @@ class ViewingEditor:
                 return checked
             actor, viewing = checked
             owner = "" if viewing["user_id"] == actor["id"] else f", di {viewing['user']}"
-            text = f"Annullare la visione #{viewing_id}: {_label(viewing)} del {format_iso(viewing["watched_on"])}{owner}?"
+            text = f"Annullare la visione ID {viewing_id}: {_label(viewing)} del {format_iso(viewing["watched_on"])}{owner}?"
             options = (Option("Sì, annulla", "yes"), Option("No", "no"))
             return Ask("cancel", text, options, viewing_id=viewing_id, actor=discord_id)
 
@@ -69,10 +69,10 @@ class ViewingEditor:
             db.commit()
             owner = "" if viewing["user_id"] == actor["id"] else f" di {viewing['user']}"
             announcement = (
-                f"{actor['name']} ha annullato la visione #{ask.viewing_id}: "
+                f"{actor['name']} ha annullato la visione ID {ask.viewing_id}: "
                 f"{_label(viewing)} del {format_iso(viewing["watched_on"])}{owner}."
             )
-            return Done(f"Annullata la visione #{ask.viewing_id}.", announcement)
+            return Done(f"Annullata la visione ID {ask.viewing_id}.", announcement)
 
     def request_edit(
         self, discord_id: str, viewing_id: int, date_text: str | None = None, film_text: str | None = None
@@ -140,7 +140,7 @@ class ViewingEditor:
         owner = "" if viewing["user"] == self._actor_name(db, ask.actor) else f", di {viewing['user']}"
         after_day = ask.new_date or date.fromisoformat(viewing["watched_on"])
         text = (
-            f"Modificare la visione #{ask.viewing_id}{owner}: {_label(viewing)} del {format_iso(viewing["watched_on"])} → "
+            f"Modificare la visione ID {ask.viewing_id}{owner}: {_label(viewing)} del {format_iso(viewing["watched_on"])} → "
             f"{new_label or _label(viewing)} del {format_date(after_day)}?"
         )
         return replace(ask, kind="edit", text=text, options=(Option("Sì, modifica", "yes"), Option("No", "no")))
@@ -167,17 +167,17 @@ class ViewingEditor:
             after = db.get_viewing(ask.viewing_id)
             owner = "" if viewing["user_id"] == actor["id"] else f" di {viewing['user']}"
             announcement = (
-                f"{actor['name']} ha modificato la visione #{ask.viewing_id}{owner}: "
+                f"{actor['name']} ha modificato la visione ID {ask.viewing_id}{owner}: "
                 f"{_label(viewing)} del {format_iso(viewing["watched_on"])} → {_label(after)} del {format_iso(after["watched_on"])}."
             )
-            return Done(f"Modificata la visione #{ask.viewing_id}.", announcement)
+            return Done(f"Modificata la visione ID {ask.viewing_id}.", announcement)
 
     @staticmethod
     def _actor_name(db: Database, discord_id: str) -> str:
         return db.query("SELECT name FROM users WHERE discord_id = ?", (discord_id,))[0]["name"]
 
     def set_rating(self, discord_id: str, rating: float, viewing_id: int | None = None) -> Done | Rejected:
-        """Imposta il voto di una visione, o dell'ultima di chi scrive se manca il numero. Senza conferma: si può riscrivere."""
+        """Imposta il voto di una visione, o dell'ultima di chi scrive se manca l'ID. Senza conferma: si può riscrivere."""
         if not _is_valid_rating(rating):
             return Rejected("Il voto va da 0,5 a 5, a passi di 0,5.")
         with self._open() as db:
@@ -198,9 +198,9 @@ class ViewingEditor:
             previous = f" (da {_number(viewing['rating'])} a {_number(rating)})" if viewing["rating"] is not None else ""
             announcement = (
                 f"{actor['name']} ha dato {_number(rating)} a {_label(viewing)}, "
-                f"visione #{viewing_id} del {format_iso(viewing["watched_on"])}{owner}{previous}."
+                f"visione ID {viewing_id} del {format_iso(viewing["watched_on"])}{owner}{previous}."
             )
-            return Done(f"Voto {_number(rating)} registrato per la visione #{viewing_id}.", announcement)
+            return Done(f"Voto {_number(rating)} registrato per la visione ID {viewing_id}.", announcement)
 
     @contextmanager
     def _open(self) -> Iterator[Database]:
@@ -219,9 +219,9 @@ class ViewingEditor:
             return Rejected(_UNKNOWN_USER)
         viewing = db.get_viewing(viewing_id)
         if viewing is None:
-            return Rejected(f"Non esiste la visione numero {viewing_id}.")
+            return Rejected(f"Non esiste la visione ID {viewing_id}.")
         if viewing["deleted_at"] is not None:
-            return Rejected(f"La visione #{viewing_id} è già stata annullata.")
+            return Rejected(f"La visione ID {viewing_id} è già stata annullata.")
         if viewing["user_id"] != users[0]["id"] and discord_id not in self._superusers:
             return Rejected(f"Puoi {action} solo le tue visioni.")
         return users[0], viewing

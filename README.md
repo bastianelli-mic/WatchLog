@@ -192,14 +192,15 @@ Sempre nel canale delle statistiche, `/visioni` mostra l'elenco delle singole vi
 Ha gli stessi parametri facoltativi di `/stats` (`utente`, `periodo`, `dal` e `al`) e se ne aggiunge uno:
 - `titolo`: solo i film il cui titolo contiene quel testo, senza badare a maiuscole e accenti; vale anche per il titolo originale.
 
-Ogni riga ha il numero della visione, la data, l'utente (se l'elenco è di `gruppo`), titolo, anno e voto.
+Ogni riga inizia con `ID`, l'identificativo della visione, seguito da data, utente (se l'elenco è di `gruppo`), titolo, anno e voto.
+L'ID è quello da usare in `/annulla`, `/voto` e `/modifica`; non cambia con i filtri.
 Le righe sono 20 per pagina: con più visioni compaiono i bottoni «Precedente» e «Successivo», che può usare solo chi ha lanciato il comando.
 Le visioni annullate non compaiono.
 
 In un altro canale il bot risponde, solo a chi ha scritto, indicando il canale giusto.
 Gli errori (utente sconosciuto, data non valida) sono visibili solo a chi ha lanciato il comando.
 
-`/annulla numero` annulla una visione: il numero è quello che compare in `/visioni`.
+`/annulla numero` annulla una visione: il parametro `numero` è l'ID che compare in `/visioni`.
 - Possono annullare l'autore della visione e i super user, indicati come `superusers` (ID Discord) in `config/discord.yaml`.
 - Il bot mostra film, data e utente e chiede conferma con due bottoni, solo a chi ha dato il comando.
 - Se confermi, scrive nel canale chi ha annullato cosa, così i cambiamenti restano visibili al gruppo.
