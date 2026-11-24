@@ -8,8 +8,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
+from uuid import uuid4
 
-from watchlog.dates import format_date
+from watchlog.dates import format_date, local_now
 from watchlog.db import Database
 from watchlog.parser import WRONG_DATE_REASON, parse_line
 from watchlog.resolver import resolve
@@ -114,6 +115,47 @@ class LiveService:
                 return self._resolve_film(db, draft)
             except TmdbError:
                 return Rejected(_TMDB_DOWN)
+
+    def insert(
+        self,
+        user_id: int,
+        *,
+        title: str,
+        year: int,
+        rating: float | None,
+        watched_on: date,
+        watched_on_source: str,
+        tmdb_id: int | None = None,
+        confirm_duplicate: bool = False,
+    ) -> Outcome:
+        """Registra una visione arrivata dal sito: stesso percorso del bot, senza i bottoni di Discord."""
+        with self._open() as db:
+            if not db.query("SELECT 1 FROM users WHERE id = ?", (user_id,)):
+                return Rejected("Utente non trovato.")
+            draft = Draft(
+                user_id=user_id,
+                title=title,
+                year=year,
+                rating=rating,
+                watched_on=watched_on,
+                watched_on_source=watched_on_source,
+                wrong_date=False,
+                sent_at=local_now(),
+                source_ref=f"web:{uuid4().hex}",
+                tmdb_id=tmdb_id,
+            )
+            if tmdb_id is None:
+                outcome = self._resolve_film(db, draft)
+                if confirm_duplicate and isinstance(outcome, Ask) and outcome.kind == "duplicate" and outcome.draft:
+                    return self._record(db, outcome.draft)
+                return outcome
+            if not confirm_duplicate and db.has_viewing_same_day(user_id, tmdb_id, watched_on):
+                text = (
+                    f"Hai già registrato «{title} ({year})» per il {format_date(watched_on)}. "
+                    "Lo registro di nuovo?"
+                )
+                return Ask("duplicate", text, (Option("Registra di nuovo", "yes"), Option("Annulla", "no")), draft)
+            return self._record(db, draft)
 
     def answer(self, ask: Ask, value: str) -> Outcome:
         if value not in {option.value for option in ask.options}:

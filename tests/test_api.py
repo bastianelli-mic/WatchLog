@@ -5,8 +5,9 @@ from fastapi.testclient import TestClient
 
 from watchlog.api import create_app
 from watchlog.config import UserConfig
+from watchlog.dates import local_today
 from watchlog.db import Database
-from watchlog.tmdb import MovieDetails
+from watchlog.tmdb import Candidate, MovieDetails, TmdbError
 
 
 @pytest.fixture
@@ -118,6 +119,135 @@ class TestViewings:
 
     def test_unknown_user_is_not_found(self, client):
         assert client.get("/api/viewings", params={"user": "nessuno"}).status_code == 404
+
+
+class FakeClient:
+    def __init__(self):
+        self.search_calls = []
+        self.details_calls = []
+
+    def search(self, title):
+        self.search_calls.append(title)
+        if title == "Heat":
+            return [Candidate(1, "Heat", None, "Heat", 1995, 1.0)]
+        if title == "Roofman":
+            return [Candidate(3, "Roofman", None, "Roofman", 2025, 1.0)]
+        if title == "Ambigua":
+            return [
+                Candidate(4, "Ambigua", None, "Ambigua", 2025, 1.0),
+                Candidate(5, "Ambigua", None, "Ambigua", 2025, 0.9),
+            ]
+        if title == "Guasto":
+            raise TmdbError("TMDB non raggiungibile")
+        return []
+
+    def details(self, tmdb_id):
+        self.details_calls.append(tmdb_id)
+        title = "Roofman" if tmdb_id == 3 else f"Film {tmdb_id}"
+        return MovieDetails(tmdb_id, title, title, 2025, 120, ((18, "Drammatico"),), ((1, "Regista"),))
+
+
+@pytest.fixture
+def write_api(db_path):
+    fake = FakeClient()
+    return TestClient(create_app(db_path, client_factory=lambda: fake)), fake
+
+
+def post_viewing(client, **overrides):
+    body = {"user": "mario", "film": "Roofman (2025)", "watched_on": "2026-08-02"}
+    body.update(overrides)
+    return client.post("/api/viewings", json=body)
+
+
+class TestAddViewing:
+    def test_a_resolved_film_is_recorded_and_appears_in_the_list(self, write_api):
+        client, fake = write_api
+
+        response = post_viewing(client, rating=4.5)
+
+        assert response.status_code == 201
+        assert "Roofman (2025)" in response.json()["message"]
+        row = next(v for v in client.get("/api/viewings").json() if v["title"] == "Roofman")
+        assert (row["user"], row["watched_on"], row["rating"]) == ("mario", "2026-08-02", 4.5)
+        assert fake.details_calls == [3]
+
+    def test_missing_date_uses_today(self, write_api):
+        client, _ = write_api
+
+        response = post_viewing(client, watched_on=None)
+
+        assert response.status_code == 201
+        row = next(v for v in client.get("/api/viewings").json() if v["title"] == "Roofman")
+        assert row["watched_on"] == local_today().isoformat()
+
+    def test_an_ambiguous_film_returns_the_candidates_and_the_chosen_id_is_recorded(self, write_api):
+        client, fake = write_api
+
+        first = post_viewing(client, film="Ambigua (2025)")
+
+        assert first.status_code == 409
+        detail = first.json()["detail"]
+        assert detail["status"] == "ambiguous"
+        assert [c["tmdb_id"] for c in detail["candidates"]] == [4, 5]
+
+        chosen = post_viewing(client, film="Ambigua (2025)", tmdb_id=4)
+
+        assert chosen.status_code == 201
+        assert fake.details_calls == [4]
+        assert any(v["title"] == "Film 4" for v in client.get("/api/viewings").json())
+
+    def test_a_same_day_viewing_asks_before_recording_it_again(self, write_api):
+        client, _ = write_api
+
+        first = client.post(
+            "/api/viewings",
+            json={"user": "franco", "film": "Heat (1995)", "watched_on": "2026-08-01"},
+        )
+        assert first.status_code == 409
+        assert first.json()["detail"]["status"] == "duplicate"
+
+        confirmed = client.post(
+            "/api/viewings",
+            json={"user": "franco", "film": "Heat (1995)", "watched_on": "2026-08-01", "confirm_duplicate": True},
+        )
+        assert confirmed.status_code == 201
+        rows = [v for v in client.get("/api/viewings").json() if v["user"] == "franco" and v["title"] == "Heat"]
+        assert len(rows) == 2
+
+    def test_a_film_not_found_on_tmdb_is_rejected(self, write_api):
+        client, _ = write_api
+
+        response = post_viewing(client, film="Sconosciuto (2020)")
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["status"] == "rejected"
+        assert "TMDB" in response.json()["detail"]["message"]
+
+    def test_an_unknown_user_is_not_found(self, write_api):
+        client, _ = write_api
+
+        assert post_viewing(client, user="nessuno").status_code == 404
+
+    @pytest.mark.parametrize("film", ["Roofman", "Roofman 2025", "(2025)"])
+    def test_the_film_must_be_written_as_title_and_year(self, write_api, film):
+        client, _ = write_api
+
+        assert post_viewing(client, film=film).status_code == 422
+
+    @pytest.mark.parametrize("rating", [0, 0.3, 5.5, 6])
+    def test_the_rating_must_be_a_half_step_between_half_and_five(self, write_api, rating):
+        client, _ = write_api
+
+        assert post_viewing(client, rating=rating).status_code == 422
+
+    def test_a_tmdb_failure_is_reported_without_recording(self, write_api):
+        client, _ = write_api
+
+        response = post_viewing(client, film="Guasto (2025)")
+
+        assert response.status_code == 502
+        assert "TMDB" in response.json()["detail"]
+        assert not any(v["title"] == "Guasto" for v in client.get("/api/viewings").json())
 
 
 def test_missing_database_is_reported_as_unavailable(tmp_path):

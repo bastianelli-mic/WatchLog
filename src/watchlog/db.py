@@ -101,6 +101,9 @@ class Database:
     def user_id_by_whatsapp(self, whatsapp_name: str) -> int | None:
         return self._scalar("SELECT id FROM users WHERE whatsapp_name = ?", whatsapp_name)
 
+    def user_id_by_name(self, name: str) -> int | None:
+        return self._scalar("SELECT id FROM users WHERE name = ?", name)
+
     def find_user_by_chat_name(self, chat_name: str) -> tuple[int, str] | None:
         """L'utente e il suo nome principale nella chat, cercando per nome principale o per alias."""
         rows = self.query(

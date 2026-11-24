@@ -2,11 +2,23 @@
 
 import calendar
 import re
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
+LOCAL_TZ = ZoneInfo("Europe/Rome")  # le date del gruppo sono quelle italiane, non UTC
 
 _DATE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
 _MONTH = re.compile(r"^(\d{1,2})/(\d{4})$")
 _YEAR = re.compile(r"^(\d{4})$")
+
+
+def local_today() -> date:
+    return datetime.now(LOCAL_TZ).date()
+
+
+def local_now() -> datetime:
+    """Ora italiana senza fuso, come le date dei messaggi del bot."""
+    return datetime.now(LOCAL_TZ).replace(tzinfo=None)
 
 
 def format_date(day: date) -> str:

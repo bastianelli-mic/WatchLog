@@ -4,20 +4,19 @@ import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
 
 from watchlog.bot import cancel_channel_error, stats_reply, user_names, viewings_reply
 from watchlog.config import GROUP_NAME, ConfigError, DiscordConfig
+from watchlog.dates import LOCAL_TZ
 from watchlog.edits import Done, ViewingEditor
 from watchlog.live import Ask, Cancelled, LiveService, Recorded, Rejected, Unrecognized
 
 # Figlio del logger "discord": ne eredita il formato e il livello che discord.py imposta all'avvio.
 log = logging.getLogger("discord.watchlog")
 
-LOCAL_TZ = ZoneInfo("Europe/Rome")  # le date dei messaggi sono quelle del gruppo, non UTC
 CHOICE_TIMEOUT_SECONDS = 180
 PAGES_TIMEOUT_SECONDS = 300
 PERIOD_CHOICES = [
