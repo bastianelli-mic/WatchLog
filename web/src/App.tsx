@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { AddViewingView } from "./AddViewingView";
 import { useApi } from "./api";
 import { formatDate } from "./format";
+import { ImportView } from "./ImportView";
 import { PERIODS, periodRange, type Period, type Range } from "./period";
 import { StatsView } from "./StatsView";
 import { ViewingsView } from "./ViewingsView";
@@ -16,14 +18,21 @@ const PERIOD_LABELS: Record<Period | "intervallo", string> = {
   intervallo: "Intervallo",
 };
 
-type Tab = "statistiche" | "visioni";
+type Tab = "statistiche" | "visioni" | "aggiungi";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "statistiche", label: "Statistiche" },
+  { id: "visioni", label: "Visioni" },
+  { id: "aggiungi", label: "Aggiungi" },
+];
 
 export function App() {
-  const users = useApi<string[]>("/api/users");
+  const [refresh, setRefresh] = useState(0);
+  const users = useApi<string[]>(refresh ? `/api/users?r=${refresh}` : "/api/users");
   const [chosen, setChosen] = useState(() => readStored(USER_KEY) ?? GROUP);
   const [period, setPeriod] = useState<Period | "intervallo">("tutto");
   const [custom, setCustom] = useState<Range>({});
   const [tab, setTab] = useState<Tab>("statistiche");
+  const onChanged = () => setRefresh((value) => value + 1);
 
   // Un nome ricordato che non esiste più (rinominato in users.yaml) vale come gruppo.
   const user = users.data && !users.data.includes(chosen) ? GROUP : chosen;
@@ -45,9 +54,9 @@ export function App() {
           WatchLog
         </div>
         <nav className="tabs" role="tablist" aria-label="Sezioni">
-          {(["statistiche", "visioni"] as const).map((name) => (
-            <button key={name} role="tab" aria-selected={tab === name} onClick={() => setTab(name)}>
-              {name === "statistiche" ? "Statistiche" : "Visioni"}
+          {TABS.map(({ id, label }) => (
+            <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
+              {label}
             </button>
           ))}
         </nav>
@@ -65,37 +74,50 @@ export function App() {
             ))}
           </select>
         </label>
-        <div className="segmented" role="radiogroup" aria-label="Periodo">
-          {[...PERIODS, "intervallo" as const].map((name) => (
-            <button key={name} role="radio" aria-checked={period === name} onClick={() => setPeriod(name)}>
-              {PERIOD_LABELS[name]}
-            </button>
-          ))}
-        </div>
-        {period === "intervallo" && (
-          <div className="range">
-            <label className="field">
-              <span>Dal</span>
-              <input
-                type="date"
-                value={custom.since ?? ""}
-                onChange={(event) => setCustom({ ...custom, since: event.target.value || undefined })}
-              />
-            </label>
-            <label className="field">
-              <span>Al</span>
-              <input
-                type="date"
-                value={custom.until ?? ""}
-                onChange={(event) => setCustom({ ...custom, until: event.target.value || undefined })}
-              />
-            </label>
-          </div>
+        {tab !== "aggiungi" && (
+          <>
+            <div className="segmented" role="radiogroup" aria-label="Periodo">
+              {[...PERIODS, "intervallo" as const].map((name) => (
+                <button key={name} role="radio" aria-checked={period === name} onClick={() => setPeriod(name)}>
+                  {PERIOD_LABELS[name]}
+                </button>
+              ))}
+            </div>
+            {period === "intervallo" && (
+              <div className="range">
+                <label className="field">
+                  <span>Dal</span>
+                  <input
+                    type="date"
+                    value={custom.since ?? ""}
+                    onChange={(event) => setCustom({ ...custom, since: event.target.value || undefined })}
+                  />
+                </label>
+                <label className="field">
+                  <span>Al</span>
+                  <input
+                    type="date"
+                    value={custom.until ?? ""}
+                    onChange={(event) => setCustom({ ...custom, until: event.target.value || undefined })}
+                  />
+                </label>
+              </div>
+            )}
+          </>
         )}
       </div>
-      <p className="scope">{describe(user, range)}</p>
+      {tab !== "aggiungi" && <p className="scope">{describe(user, range)}</p>}
 
-      <main>{tab === "statistiche" ? <StatsView user={user} range={range} /> : <ViewingsView user={user} range={range} />}</main>
+      <main>
+        {tab === "statistiche" && <StatsView key={`stats-${refresh}`} user={user} range={range} />}
+        {tab === "visioni" && <ViewingsView key={`viewings-${refresh}`} user={user} range={range} />}
+        {tab === "aggiungi" && (
+          <div className="cards">
+            <AddViewingView user={user} users={users.data ?? []} onChanged={onChanged} />
+            <ImportView onChanged={onChanged} />
+          </div>
+        )}
+      </main>
     </div>
   );
 }

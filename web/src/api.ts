@@ -49,6 +49,81 @@ export interface Viewing {
   rating: number | null;
 }
 
+export interface Candidate {
+  tmdb_id: number;
+  label: string;
+}
+
+export interface ViewingIn {
+  user: string;
+  film: string;
+  watched_on?: string | null;
+  rating?: number | null;
+  tmdb_id?: number;
+  confirm_duplicate?: boolean;
+}
+
+export interface ViewingCreated {
+  message: string;
+}
+
+export interface ImportSummary {
+  entries: number;
+  inserted: number;
+  duplicates: number;
+  new_movies: number;
+  unmapped: number;
+  unresolved: number;
+  unresolved_viewings: number;
+  probable_duplicates: number;
+  suspicious_dates: number;
+  anomalies: number;
+}
+
+export interface ImportResponse {
+  summary: ImportSummary;
+  text: string;
+}
+
+export interface ConflictDetail {
+  status: "ambiguous" | "duplicate" | "rejected";
+  message: string;
+  candidates?: Candidate[];
+}
+
+export function isConflictDetail(detail: unknown): detail is ConflictDetail {
+  if (typeof detail !== "object" || detail === null) return false;
+  const value = detail as Partial<ConflictDetail>;
+  return typeof value.status === "string" && typeof value.message === "string";
+}
+
+/** Il testo da mostrare per un `detail` dell'API: stringa, errore di validazione o conflitto. */
+export function detailMessage(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: unknown };
+    if (typeof first?.msg === "string") return first.msg.replace(/^Value error,\s*/, "");
+  }
+  if (isConflictDetail(detail)) return detail.message;
+  return "Errore imprevisto.";
+}
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: unknown,
+  ) {
+    super(detailMessage(detail));
+    this.name = "ApiError";
+  }
+}
+
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof TypeError) return "API non raggiungibile.";
+  return error instanceof Error ? error.message : "Errore imprevisto.";
+}
+
 export function apiUrl(path: string, params: Record<string, string | undefined>): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
@@ -69,26 +144,34 @@ export function useApi<T>(url: string): Loaded<T> {
     const controller = new AbortController();
     setState((previous) => ({ ...previous, loading: true }));
     fetch(url, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await errorText(response));
-        return (await response.json()) as T;
-      })
+      .then((response) => readJson<T>(response))
       .then((data) => setState({ data, loading: false }))
-      .catch((error: Error) => {
+      .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setState({ error: error instanceof TypeError ? "API non raggiungibile." : error.message, loading: false });
+        setState({ error: errorMessage(error), loading: false });
       });
     return () => controller.abort();
   }, [url]);
   return state;
 }
 
-async function errorText(response: Response): Promise<string> {
+export async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<T>(response);
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  if (response.ok) return (await response.json()) as T;
+  let detail: unknown = `Errore ${response.status}`;
   try {
     const body = await response.json();
-    if (typeof body.detail === "string") return body.detail;
+    detail = "detail" in body ? body.detail : body;
   } catch {
     // risposta senza JSON: basta lo stato
   }
-  return `Errore ${response.status}`;
+  throw new ApiError(response.status, detail);
 }
