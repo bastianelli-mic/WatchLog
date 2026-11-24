@@ -1,6 +1,6 @@
 # Installare WatchLog sul Raspberry Pi
 
-Guida passo per passo per far girare WatchLog sul Raspberry Pi 3 in due container con riavvio automatico: il bot Discord e la pagina web.
+Guida passo per passo per far girare WatchLog sul Raspberry Pi 3 in due container con riavvio automatico: il bot Discord e la pagina web, che permette anche di inserire una visione e importare un export della chat.
 Le immagini si costruiscono sul Pi stesso, quindi l'architettura ARM non richiede nulla di speciale.
 Il build sul Pi non è ancora stato provato: il primo avvio è la verifica.
 
@@ -9,8 +9,8 @@ Il build sul Pi non è ancora stato provato: il primo avvio è la verifica.
 - **Raspberry Pi OS Lite a 64 bit**. Sul Pi, `dpkg --print-architecture` deve rispondere `arm64`: con il sistema a 32 bit (`armhf`) alcune dipendenze non hanno pacchetti pronti.
 - Accesso SSH al Pi. Con Raspberry Pi Imager si attiva già nella scrittura della scheda, insieme a utente, password e nome del Pi (per esempio `watchlog`, che in rete diventa `watchlog.local`).
 - L'app Discord già creata, con il token in `local/discord_token` (vedi `docs/discord-app.md`).
-- La chiave TMDB in `local/tmdb_api_key`, che serve all'inserimento delle visioni dal bot.
-- `config/discord.yaml` e `config/users.yaml` compilati, e il database `data/watchlog.sqlite` già importato.
+- La chiave TMDB in `local/tmdb_api_key`, che serve al bot e alla pagina (inserimento e import dal sito).
+- `config/discord.yaml`, `config/users.yaml` e, se serve, `config/corrections.yaml` compilati, e il database `data/watchlog.sqlite` già importato.
 
 Negli esempi `UTENTE@IP_PI` sta per l'utente creato sul Pi e il suo indirizzo, per esempio `mario@watchlog.local`.
 
@@ -47,7 +47,7 @@ Cosa fa ogni parte:
 - `./` con la barra finale copia il contenuto della cartella corrente, non la cartella stessa.
 - `UTENTE@IP_PI:watchlog/` è la destinazione: la cartella `watchlog` nella home dell'utente sul Pi, creata se manca.
 
-I file `local/discord_token` e `local/tmdb_api_key` devono esistere prima dell'avvio: se ne manca uno, Docker crea al suo posto una cartella con quel nome e il bot non parte.
+I file `local/discord_token` e `local/tmdb_api_key` devono esistere prima dell'avvio: se ne manca uno, Docker crea al suo posto una cartella con quel nome, il bot non parte e la pagina non può inserire o importare.
 
 ## 3. Copiare il database, una volta sola
 
@@ -96,7 +96,10 @@ discord.gateway: Shard ID None has connected to Gateway
 Se invece legge "Inserimento delle visioni spento", manca `input_channel_id` in `config/discord.yaml`. Se all'avvio compare "Inserimento delle visioni disattivato", manca la chiave TMDB.
 
 In Discord il bot risulta online: nel canale `#statistiche` prova `/stats`, nel canale delle visioni scrivi un film, per esempio `Heat (1995)`.
-Da un dispositivo della rete locale apri `http://IP_PI:8000` (o `http://watchlog.local:8000`): è la pagina web, senza login, da usare solo in rete locale.
+Da un dispositivo della rete locale apri `http://IP_PI:8000` (o `http://watchlog.local:8000`): è la pagina web.
+Nella scheda **Aggiungi** prova a inserire un film e, se vuoi, importa un export: se manca la chiave TMDB, la pagina lo segnala e non salva nulla.
+
+La pagina non ha login: chiunque raggiunga il Pi sulla rete locale può leggere, inserire e importare. Non aprire la porta `8000` sul router e non pubblicarla su Internet.
 
 Importante: **per ogni token deve girare una sola istanza del bot**. Se lo hai provato sul computer con `watchlog bot`, fermalo prima di avviare quello sul Pi, altrimenti ogni comando riceve due risposte e Discord segnala un errore.
 
@@ -107,7 +110,8 @@ Importante: **per ogni token deve girare una sola istanza del bot**. Se lo hai p
 | Vedere i log in diretta | `docker compose logs -f bot` (oppure `api` per la pagina) |
 | Fermare tutto | `docker compose stop` |
 | Riavviare | `docker compose restart` |
-| Applicare modifiche a `config/users.yaml` | rilancia `rsync` (passo 2), poi `docker compose restart bot`: il bot riallinea gli utenti all'avvio |
+| Applicare modifiche a `config/users.yaml` | rilancia `rsync` (passo 2), poi `docker compose restart bot`: il bot riallinea gli utenti all'avvio; ricarica la pagina per vederli |
+| Applicare modifiche a `config/corrections.yaml` | rilancia `rsync` (passo 2): il prossimo import, dalla pagina o da `watchlog import`, lo legge |
 | Aggiornare dopo modifiche al codice | rilancia `rsync` (passo 2), poi `docker compose up -d --build` |
 | Spegnere e rimuovere i container | `docker compose down` |
 
@@ -140,4 +144,8 @@ Cosa fa ogni parte:
 | `/stats` o la pagina dicono "Database non trovato" | Manca `data/watchlog.sqlite` sul Pi (passo 3). |
 | `/stats` dice di usare un altro canale | Il comando funziona solo nel canale indicato in `stats_channel_id`. |
 | La pagina non si apre | Controlla con `docker compose ps` che `watchlog-api` sia `running` e usa l'indirizzo del Pi con la porta `:8000`. |
+| Dalla pagina, "API non raggiungibile" | `watchlog-api` non è in esecuzione: `docker compose logs --tail 20 api`. |
+| Dalla pagina, "Chiave TMDB mancante" | `local/tmdb_api_key` manca o è una cartella: deve esistere prima di `docker compose up`, e il servizio `api` la monta. |
+| Dalla pagina, "File non trovato: config/users.yaml" | `config/users.yaml` manca sul Pi o non è montato in `api`: rilancia `rsync` e `docker compose up -d`. |
+| Un import dalla pagina si ferma su un errore TMDB | Riprova: l'import non lascia visioni a metà. Controlla la chiave e attendi qualche secondo se TMDB risponde 429. |
 | Il build si ferma con `exec format error` o pacchetti mancanti per `armhf` | Il sistema è a 32 bit: serve Raspberry Pi OS a 64 bit. |

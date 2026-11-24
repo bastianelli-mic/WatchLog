@@ -4,7 +4,7 @@ Registro dei film visti da un gruppo di amici, con le statistiche per utente e d
 Oggi si alimenta importando l'export di una chat WhatsApp, che contiene un messaggio per ogni visione.
 Per ogni film cerca i metadati su TMDB (durata, generi, regista) e salva la visione per l'utente che l'ha scritta.
 Un bot Discord registra le visioni scritte in un canale e risponde al comando `/stats` con le statistiche.
-Una pagina web, per ora in sola lettura e pensata per la rete locale, mostra statistiche ed elenco delle visioni.
+Una pagina web, pensata per la rete locale, mostra statistiche ed elenco delle visioni, permette di inserirne una e di importare un export della chat.
 
 Tutti i comandi si lanciano con `watchlog` e hanno l'opzione `--help`, per esempio `watchlog stats --help`.
 
@@ -25,10 +25,10 @@ I file con i dati reali sono ignorati da git: stanno in `local/`, `data/` e `con
 
 | Cosa | Dove | Note |
 |---|---|---|
-| Chiave TMDB | `local/tmdb_api_key`, oppure variabile `TMDB_API_KEY` | Va bene la chiave API v3 (32 caratteri) o il token di lettura (stringa lunga che inizia con `eyJ`). Si ottengono gratis su themoviedb.org, nelle impostazioni del profilo, sezione API. |
+| Chiave TMDB | `local/tmdb_api_key`, oppure variabile `TMDB_API_KEY` | Va bene la chiave API v3 (32 caratteri) o il token di lettura (stringa lunga che inizia con `eyJ`). Si ottengono gratis su themoviedb.org, nelle impostazioni del profilo, sezione API. Serve a import, bot e sito. |
 | Export della chat | `local/chat.txt` | Si ottiene con la funzione "Esporta chat" di WhatsApp, senza media. Vanno bene i formati Android e iPhone, con l'ora a 24 o a 12 ore (AM/PM) e la data d'invio giorno-mese o mese-giorno: l'ordine si deduce dal file. |
-| Utenti | `config/users.yaml` | Parti da `config/users.example.yaml`. |
-| Correzioni dei film | `config/corrections.yaml` | Facoltativo. Parti da `config/corrections.example.yaml`. |
+| Utenti | `config/users.yaml` | Parti da `config/users.example.yaml`. Serve a import, bot e sito. |
+| Correzioni dei film | `config/corrections.yaml` | Facoltativo. Parti da `config/corrections.example.yaml`. Serve a import e sito. |
 | Database | `data/watchlog.sqlite` | Creato dal primo import. |
 | Token del bot Discord | `local/discord_token`, oppure variabile `DISCORD_TOKEN` | Solo per il comando `bot`. |
 | Server, canali e super user Discord | `config/discord.yaml` | Solo per il comando `bot`. Parti da `config/discord.example.yaml`. |
@@ -111,10 +111,11 @@ Può inoltre contenere queste sezioni:
 - **Anomalie del parser**: righe che non sono visioni, o con la data sbagliata.
 
 Opzioni: `--db`, `--users` e `--corrections` cambiano i percorsi predefiniti (`data/watchlog.sqlite`, `config/users.yaml`, `config/corrections.yaml`).
+Lo stesso import si può lanciare dalla pagina web, scegliendo se analizzare l'export o importarlo (vedi la sezione `api`).
 
 Cose da sapere:
 - **Si può rilanciare in sicurezza.** Le righe già importate vengono riconosciute e non duplicate, e non fanno più chiamate a TMDB.
-- **È atomico.** Se TMDB fallisce a metà, non viene salvato nulla.
+- **Le visioni sono atomiche.** Se TMDB fallisce durante il piano, nessuna visione viene salvata; gli utenti presenti in `users.yaml` possono essere già stati allineati.
 - **Un messaggio modificato dopo l'import** e poi riesportato non è riconosciuto dalla chiave, perché l'export non ha un identificativo del messaggio. Se il film e il giorno sono gli stessi, finisce tra i probabili doppioni e non viene aggiunto; se l'hai cambiato (film o giorno), è una visione nuova e quella vecchia resta.
 - **Le righe già importate non si aggiornano.** Se correggi una data nella chat e rilanci l'import, il database non cambia. Finché il database deriva solo dalla chat, la strada più semplice è fare una copia di `data/watchlog.sqlite`, cancellarlo e reimportare.
 
@@ -225,14 +226,21 @@ Per ogni token deve girare una sola istanza del bot.
 watchlog api --host 0.0.0.0
 ```
 
-Avvia un'API in sola lettura sul database e, alla radice, la pagina web: da un altro dispositivo della rete locale si apre `http://<indirizzo-del-computer>:8000`.
-Senza `--host` risponde solo dal computer stesso (`127.0.0.1`); `--port` cambia la porta, `--db` il database.
-Non c'è login: va usata solo in rete locale.
+Avvia l'API sul database e, alla radice, la pagina web: da un altro dispositivo della rete locale si apre `http://<indirizzo-del-computer>:8000`.
+Senza `--host` risponde solo dal computer stesso (`127.0.0.1`); `--port` cambia la porta, `--db` il database, `--users` e `--corrections` i file di configurazione.
+Inserimento e import usano la chiave TMDB e leggono `config/users.yaml` e `config/corrections.yaml`.
 
-- La pagina ha due sezioni, **Statistiche** (riquadri e grafici) e **Visioni** (elenco con ricerca per titolo).
-- In alto si sceglie l'utente, o `Gruppo` per tutti, e il periodo: sempre, anno, mese, settimana, oggi o un intervallo di date. Il browser ricorda l'utente scelto.
+- La pagina ha tre sezioni: **Statistiche** (riquadri e grafici), **Visioni** (elenco con ricerca per titolo) e **Aggiungi** (nuova visione e import della chat).
+- In Statistiche e Visioni si sceglie in alto l'utente, o `Gruppo` per tutti, e il periodo: sempre, anno, mese, settimana, oggi o un intervallo di date. Il browser ricorda l'utente scelto.
 - Le date si mostrano `gg/mm/aaaa`; l'API le vuole e le restituisce in formato ISO (`aaaa-mm-gg`).
+- **Aggiungi → Nuova visione**: l'autore è l'utente scelto in alto; con `Gruppo` il form chiede di sceglierne uno. Il film si scrive come in chat, `Titolo (anno)`; la data vuota vale oggi; il voto è facoltativo.
+  Se TMDB è incerto, il form mostra i candidati; se lo stesso utente ha già visto quel film nello stesso giorno, chiede conferma prima di registrarlo di nuovo.
+- **Aggiungi → Importa una chat WhatsApp**: si sceglie il file `.txt` esportato. **Analizza** fa un dry-run senza scrivere, **Importa** registra le visioni nuove. Il report ha gli stessi contenuti della CLI e si può copiare. L'import è idempotente, quindi si può rilanciare; la prima volta può richiedere qualche minuto perché interroga TMDB per ogni film nuovo. Utenti e correzioni si modificano nei file, non dalla pagina.
 - L'API è descritta in `http://<indirizzo>:8000/docs`: `GET /api/users`, `GET /api/stats` e `GET /api/viewings`, con i filtri facoltativi `user`, `since`, `until` (e `title` per le visioni). Senza `user` valgono i dati di tutti.
+  Le scritture sono `POST /api/viewings` (una visione) e `POST /api/import` (testo dell'export, con `?dry_run=true` per la sola analisi).
+
+**Attenzione:** non c'è login. Chiunque raggiunga la pagina sulla rete locale può leggere, inserire e importare.
+Non pubblicare la porta `8000` su Internet; se serve l'accesso da fuori, metti davanti un proxy con autenticazione.
 
 La pagina è un progetto a parte in `web/` (React, Vite e TypeScript) e va compilata una volta, con Node.js 20 o superiore:
 
@@ -244,7 +252,7 @@ npm run build
 
 Il risultato finisce in `web/dist`, che `watchlog api` serve da solo (`--web` per un'altra cartella).
 Per lavorare sulla pagina, con `watchlog api` avviato, `npm run dev` la serve con il ricaricamento automatico e passa le chiamate `/api` all'API.
-Nell'immagine Docker la pagina si compila da sola: in `docker-compose.yml` il servizio `api` gira accanto al bot, sullo stesso database.
+Nell'immagine Docker la pagina si compila da sola: in `docker-compose.yml` il servizio `api` gira accanto al bot, sullo stesso database, e monta `config/` e la chiave TMDB perché inserimento e import ne hanno bisogno.
 
 ## Flusso di lavoro consigliato
 
@@ -254,6 +262,7 @@ Nell'immagine Docker la pagina si compila da sola: in `docker-compose.yml` il se
 4. Aggiungi gli utenti mancanti e compila `config/corrections.yaml` (vedi sotto). Ripeti dal punto 3 finché il report non ha più sezioni da sistemare.
 5. Lancia `watchlog import local/chat.txt` e poi `watchlog stats`.
 6. Per aggiornare lo storico, esporta di nuovo la chat e rilancia l'import: verranno aggiunte solo le visioni nuove.
+7. Dalla pagina web (`watchlog api`) puoi anche inserire una singola visione o importare un export senza usare la riga di comando.
 
 ### Compilare `corrections.yaml`
 
@@ -277,9 +286,11 @@ Il report dell'import ti suggerisce già le righe, in tre forme:
 |---|---|
 | `Chiave TMDB mancante` | Salva la chiave in `local/tmdb_api_key` o in `TMDB_API_KEY`. |
 | `chiave TMDB non valida` | Controlla di averla copiata per intero. Il token di lettura è molto lungo. |
-| `TMDB ha risposto 429` | Troppe richieste ravvicinate. Aspetta qualche secondo e rilancia: l'import è atomico e non lascia dati a metà. |
-| `File non trovato: config/users.yaml` | Crealo con il comando `cp` che il messaggio suggerisce. |
+| `TMDB ha risposto 429` | Troppe richieste ravvicinate. Aspetta qualche secondo e rilancia: le visioni non restano a metà. |
+| `File non trovato: config/users.yaml` | Crealo con il comando `cp` che il messaggio suggerisce. Nel container `api` controlla che `config/` sia montato. |
 | `Database non trovato` | Lancia prima un import vero: il dry-run non crea il database. |
+| Dalla pagina, `Chiave TMDB mancante` o `File non trovato` | Nel container `api` manca un mount o un file. Controlla `docker-compose.yml` e che `local/tmdb_api_key` e `config/users.yaml` esistano. |
+| La pagina dice `API non raggiungibile` | `watchlog api` non è avviato, oppure il container `api` non è in esecuzione. |
 | Un film finisce sempre tra quelli da risolvere | Aggiungi una voce a `config/corrections.yaml`. |
 
 ## Test
@@ -290,5 +301,5 @@ Il report dell'import ti suggerisce già le righe, in tre forme:
 
 I test non usano la rete: TMDB è simulato.
 
-Quelli della pagina web (date, periodi, assi dei grafici) si lanciano da `web/` con `npm test`.
+Quelli della pagina web (date, periodi, assi dei grafici, messaggi di errore dell'API) si lanciano da `web/` con `npm test`.
 Il campione `tests/fixtures/sample_chat.txt` contiene nomi di fantasia ed è usato dai test.
