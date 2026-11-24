@@ -477,13 +477,38 @@ def test_api_serves_database_and_web_page_on_local_address_by_default(monkeypatc
     exit_code = main(["api"])
 
     assert exit_code == 0
-    assert calls == [(Path("data/watchlog.sqlite"), Path("web/dist"), "127.0.0.1", 8000)]
+    assert calls == [
+        (
+            Path("data/watchlog.sqlite"),
+            Path("web/dist"),
+            "127.0.0.1",
+            8000,
+            Path("config/users.yaml"),
+            Path("config/corrections.yaml"),
+        )
+    ]
 
 
 def test_api_address_and_paths_can_be_changed(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr("watchlog.api.serve", lambda *args: calls.append(args))
 
-    main(["api", "--db", str(tmp_path / "w.sqlite"), "--web", str(tmp_path), "--host", "0.0.0.0", "--port", "9000"])
+    main(
+        [
+            "api",
+            "--db",
+            str(tmp_path / "w.sqlite"),
+            "--web",
+            str(tmp_path),
+            "--users",
+            str(tmp_path / "u.yaml"),
+            "--corrections",
+            str(tmp_path / "c.yaml"),
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "9000",
+        ]
+    )
 
-    assert calls == [(tmp_path / "w.sqlite", tmp_path, "0.0.0.0", 9000)]
+    assert calls == [(tmp_path / "w.sqlite", tmp_path, "0.0.0.0", 9000, tmp_path / "u.yaml", tmp_path / "c.yaml")]

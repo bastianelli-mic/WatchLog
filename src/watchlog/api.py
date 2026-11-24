@@ -1,6 +1,8 @@
 """API HTTP in sola lettura per la pagina web (e un domani l'app): JSON, date in formato ISO."""
 
+import threading
 from collections.abc import Callable, Iterator
+from contextlib import nullcontext
 from datetime import date
 from pathlib import Path
 
@@ -8,8 +10,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
+from watchlog.config import ConfigError, load_corrections, load_users
 from watchlog.dates import local_today
 from watchlog.db import Database
+from watchlog.importer import ImportReport, import_chat, render_import_report
 from watchlog.listing import ViewingRow, list_viewings
 from watchlog.live import Ask, LiveService, Recorded, Rejected
 from watchlog.parser import parse_film_text
@@ -26,6 +30,9 @@ from watchlog.stats import (
     group_extras,
 )
 from watchlog.tmdb import TmdbClient, TmdbError, http_fetch, load_api_key
+
+MAX_IMPORT_CHARS = 20 * 1024 * 1024
+_IMPORT_LOCK = threading.Lock()  # due import veri in parallelo si intralcerebbero sulle stesse righe
 
 
 class NameCount(BaseModel):
@@ -102,13 +109,39 @@ class ViewingCreated(BaseModel):
     message: str
 
 
+class ImportIn(BaseModel):
+    chat: str
+
+
+class ImportSummary(BaseModel):
+    entries: int
+    inserted: int
+    duplicates: int
+    new_movies: int
+    unmapped: int
+    unresolved: int
+    unresolved_viewings: int
+    probable_duplicates: int
+    suspicious_dates: int
+    anomalies: int
+
+
+class ImportResponse(BaseModel):
+    summary: ImportSummary
+    text: str
+
+
 def create_app(
     db_path: Path,
     web_dir: Path | None = None,
     client_factory: Callable[[], TmdbClient] | None = None,
+    users_path: Path | None = None,
+    corrections_path: Path | None = None,
 ) -> FastAPI:
     """L'API su `db_path`; se `web_dir` esiste, alla radice si serve anche la pagina web già compilata."""
     app = FastAPI(title="WatchLog")
+    users_path = users_path or Path("config/users.yaml")
+    corrections_path = corrections_path or Path("config/corrections.yaml")
 
     def open_db() -> Iterator[Database]:
         if not db_path.is_file():
@@ -196,15 +229,71 @@ def create_app(
             raise HTTPException(409, detail={"status": "rejected", "message": outcome.text})
         raise HTTPException(400, "Richiesta non valida")
 
+    @app.post("/api/import", response_model=ImportResponse)
+    def import_chat_endpoint(body: ImportIn, dry_run: bool = False) -> ImportResponse:
+        if len(body.chat) > MAX_IMPORT_CHARS:
+            raise HTTPException(413, "File troppo grande: il massimo è 20 MB.")
+        if not db_path.is_file():
+            raise HTTPException(503, "Database non trovato")
+        try:
+            users = load_users(users_path)
+            corrections = load_corrections(corrections_path)
+        except ConfigError as error:
+            raise HTTPException(503, str(error)) from error
+        try:
+            client = get_client()
+        except TmdbError as error:
+            raise HTTPException(503, str(error)) from error
+
+        db = Database.in_memory(copy_of=db_path) if dry_run else Database.open(db_path)
+        try:
+            db.sync_users(users)
+            db.commit()  # gli utenti non devono tenere il lock durante le chiamate TMDB
+            lock = nullcontext() if dry_run else _IMPORT_LOCK
+            with lock:
+                report = import_chat(body.chat, db, client, corrections)
+        except TmdbError as error:
+            raise HTTPException(502, str(error)) from error
+        finally:
+            db.close()
+
+        return ImportResponse(summary=_import_summary(report), text=render_import_report(report, dry_run))
+
     if web_dir is not None and web_dir.is_dir():
         app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")  # dopo le rotte: /api ha la precedenza
     return app
 
 
-def serve(db_path: Path, web_dir: Path | None, host: str, port: int) -> None:
+def serve(
+    db_path: Path,
+    web_dir: Path | None,
+    host: str,
+    port: int,
+    users_path: Path | None = None,
+    corrections_path: Path | None = None,
+) -> None:
     import uvicorn  # import tardivo: ai test basta create_app
 
-    uvicorn.run(create_app(db_path, web_dir), host=host, port=port)
+    uvicorn.run(
+        create_app(db_path, web_dir, users_path=users_path, corrections_path=corrections_path),
+        host=host,
+        port=port,
+    )
+
+
+def _import_summary(report: ImportReport) -> ImportSummary:
+    return ImportSummary(
+        entries=report.entries,
+        inserted=report.inserted,
+        duplicates=report.duplicates,
+        new_movies=report.new_movies,
+        unmapped=len(report.unmapped_authors),
+        unresolved=len(report.unresolved),
+        unresolved_viewings=report.unresolved_viewings,
+        probable_duplicates=len(report.probable_duplicates),
+        suspicious_dates=len(report.suspicious_dates),
+        anomalies=len(report.anomalies),
+    )
 
 
 def _stats_out(stats: Stats) -> StatsOut:

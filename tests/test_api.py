@@ -250,6 +250,113 @@ class TestAddViewing:
         assert not any(v["title"] == "Guasto" for v in client.get("/api/viewings").json())
 
 
+IMPORT_USERS = """users:
+  - {name: mario, whatsapp: "Mario Rossi"}
+  - {name: franco, whatsapp: "Franco Rossi"}
+"""
+
+IMPORT_CHAT = (
+    "02/08/26, 10:00 - Mario Rossi: 05/07/2026 - Roofman (2025)\n"
+    "02/08/26, 10:01 - Franco Rossi: 01/08/2026 - Heat (1995)\n"
+    "02/08/26, 10:02 - Giuseppe Verdi: 05/07/2026 - Roofman (2025)\n"
+)
+
+
+@pytest.fixture
+def import_api(db_path, tmp_path):
+    users = tmp_path / "users.yaml"
+    users.write_text(IMPORT_USERS, encoding="utf-8")
+    fake = FakeClient()
+    app = create_app(
+        db_path,
+        client_factory=lambda: fake,
+        users_path=users,
+        corrections_path=tmp_path / "corrections.yaml",
+    )
+    return TestClient(app), fake
+
+
+class TestImportChat:
+    def test_dry_run_reports_without_writing(self, import_api):
+        client, _ = import_api
+
+        response = client.post("/api/import", params={"dry_run": True}, json={"chat": IMPORT_CHAT})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["text"].startswith("Import (dry-run: nessuna scrittura)")
+        assert body["summary"] == {
+            "entries": 3,
+            "inserted": 1,
+            "duplicates": 0,
+            "new_movies": 1,
+            "unmapped": 1,
+            "unresolved": 0,
+            "unresolved_viewings": 0,
+            "probable_duplicates": 1,
+            "suspicious_dates": 0,
+            "anomalies": 0,
+        }
+        assert not any(v["title"] == "Roofman" for v in client.get("/api/viewings").json())
+
+    def test_import_writes_and_reports(self, import_api):
+        client, fake = import_api
+
+        response = client.post("/api/import", json={"chat": IMPORT_CHAT})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["text"].startswith("Import\n")
+        assert body["summary"]["inserted"] == 1
+        assert body["summary"]["probable_duplicates"] == 1
+        rows = [v for v in client.get("/api/viewings").json() if v["title"] == "Roofman"]
+        assert [(v["user"], v["watched_on"]) for v in rows] == [("mario", "2026-07-05")]
+        assert fake.details_calls == [3]
+
+    def test_importing_twice_adds_nothing(self, import_api):
+        client, _ = import_api
+        client.post("/api/import", json={"chat": IMPORT_CHAT})
+
+        response = client.post("/api/import", json={"chat": IMPORT_CHAT})
+
+        body = response.json()
+        assert (body["summary"]["inserted"], body["summary"]["duplicates"]) == (0, 1)
+        assert len([v for v in client.get("/api/viewings").json() if v["title"] == "Roofman"]) == 1
+
+    def test_a_missing_users_file_is_reported(self, db_path, tmp_path):
+        client = TestClient(
+            create_app(
+                db_path,
+                client_factory=lambda: FakeClient(),
+                users_path=tmp_path / "manca.yaml",
+                corrections_path=tmp_path / "corrections.yaml",
+            )
+        )
+
+        response = client.post("/api/import", json={"chat": IMPORT_CHAT})
+
+        assert response.status_code == 503
+        assert "manca.yaml" in response.json()["detail"]
+
+    def test_a_tmdb_failure_does_not_write_anything(self, import_api):
+        client, _ = import_api
+        chat = "02/08/26, 10:00 - Mario Rossi: 05/07/2026 - Guasto (2025)\n"
+
+        response = client.post("/api/import", json={"chat": chat})
+
+        assert response.status_code == 502
+        assert "TMDB" in response.json()["detail"]
+        assert not any(v["title"] == "Guasto" for v in client.get("/api/viewings").json())
+
+    def test_a_too_large_chat_is_rejected(self, import_api, monkeypatch):
+        client, _ = import_api
+        monkeypatch.setattr("watchlog.api.MAX_IMPORT_CHARS", 10)
+
+        response = client.post("/api/import", json={"chat": IMPORT_CHAT})
+
+        assert response.status_code == 413
+
+
 def test_missing_database_is_reported_as_unavailable(tmp_path):
     client = TestClient(create_app(tmp_path / "manca.sqlite"))
 

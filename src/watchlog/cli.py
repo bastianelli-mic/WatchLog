@@ -55,9 +55,11 @@ def main(argv: list[str] | None = None) -> int:
     bot_cmd.add_argument("--discord-config", type=Path, default=Path("config/discord.yaml"))
     bot_cmd.add_argument("--users", type=Path, default=Path("config/users.yaml"))
 
-    api_cmd = commands.add_parser("api", help="avvia l'API in sola lettura e la pagina web")
+    api_cmd = commands.add_parser("api", help="avvia l'API e la pagina web")
     api_cmd.add_argument("--db", type=Path, default=Path("data/watchlog.sqlite"))
     api_cmd.add_argument("--web", type=Path, default=Path("web/dist"), help="pagina web compilata; se manca, solo API")
+    api_cmd.add_argument("--users", type=Path, default=Path("config/users.yaml"))
+    api_cmd.add_argument("--corrections", type=Path, default=Path("config/corrections.yaml"))
     api_cmd.add_argument("--host", default="127.0.0.1", help="0.0.0.0 per raggiungerla dalla rete locale")
     api_cmd.add_argument("--port", type=int, default=8000)
 
@@ -69,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "api":
         from watchlog import api  # import tardivo: gli altri comandi non ne hanno bisogno
 
-        api.serve(args.db, args.web, args.host, args.port)
+        api.serve(args.db, args.web, args.host, args.port, args.users, args.corrections)
         return 0
     try:
         if args.command == "resolve":
