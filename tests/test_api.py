@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -374,3 +374,148 @@ def test_serves_the_web_page_next_to_the_api(db_path, tmp_path):
 
     assert "WatchLog" in client.get("/").text
     assert client.get("/api/users").json() == ["franco", "mario"]
+
+
+class TestEditViewing:
+    def test_changes_the_date_of_any_users_viewing(self, write_api):
+        client, _ = write_api
+
+        response = client.patch("/api/viewings/3", json={"watched_on": "2026-08-02"})
+
+        assert response.status_code == 200
+        assert "ID 3" in response.json()["message"]
+        row = next(v for v in client.get("/api/viewings").json() if v["id"] == 3)
+        assert row["watched_on"] == "2026-08-02"
+
+    def test_a_resolved_film_is_written_and_its_details_are_saved(self, write_api):
+        client, fake = write_api
+
+        response = client.patch("/api/viewings/1", json={"film": "Roofman (2025)"})
+
+        assert response.status_code == 200
+        row = next(v for v in client.get("/api/viewings").json() if v["id"] == 1)
+        assert (row["title"], row["watched_on"], row["user"]) == ("Roofman", "2026-07-05", "mario")
+        assert fake.details_calls == [3]
+
+    def test_an_ambiguous_film_returns_the_candidates_and_the_chosen_id_is_used(self, write_api):
+        client, fake = write_api
+
+        first = client.patch("/api/viewings/1", json={"film": "Ambigua (2025)"})
+
+        assert first.status_code == 409
+        detail = first.json()["detail"]
+        assert detail["status"] == "ambiguous"
+        assert [c["tmdb_id"] for c in detail["candidates"]] == [4, 5]
+
+        chosen = client.patch("/api/viewings/1", json={"film": "Ambigua (2025)", "tmdb_id": 4})
+
+        assert chosen.status_code == 200
+        assert fake.details_calls == [4]
+        assert next(v for v in client.get("/api/viewings").json() if v["id"] == 1)["title"] == "Film 4"
+
+    def test_a_same_day_duplicate_is_rejected(self, write_api):
+        client, _ = write_api
+
+        response = client.patch("/api/viewings/2", json={"film": "Heat (1995)", "watched_on": "2026-07-05"})
+
+        assert response.status_code == 409
+        assert "stesso film in quel giorno" in response.json()["detail"]["message"]
+
+    def test_a_viewing_that_does_not_change_is_rejected(self, write_api):
+        client, _ = write_api
+
+        response = client.patch("/api/viewings/1", json={"watched_on": "2026-07-05"})
+
+        assert response.status_code == 409
+        assert "non cambia" in response.json()["detail"]["message"]
+
+    def test_an_empty_change_is_rejected(self, write_api):
+        client, _ = write_api
+
+        assert client.patch("/api/viewings/1", json={}).status_code == 422
+
+    def test_a_malformed_film_is_rejected(self, write_api):
+        client, _ = write_api
+
+        response = client.patch("/api/viewings/1", json={"film": "Roofman"})
+
+        assert response.status_code == 409
+        assert "Titolo (anno)" in response.json()["detail"]["message"]
+
+    def test_a_future_date_is_rejected(self, write_api):
+        client, _ = write_api
+        future = (local_today() + timedelta(days=1)).isoformat()
+
+        response = client.patch("/api/viewings/1", json={"watched_on": future})
+
+        assert response.status_code == 409
+        assert "futuro" in response.json()["detail"]["message"]
+
+    def test_an_unknown_viewing_is_not_found(self, write_api):
+        client, _ = write_api
+
+        assert client.patch("/api/viewings/99", json={"watched_on": "2026-07-06"}).status_code == 404
+
+    def test_a_cancelled_viewing_cannot_be_edited(self, write_api):
+        client, _ = write_api
+        assert client.delete("/api/viewings/1").status_code == 200
+
+        response = client.patch("/api/viewings/1", json={"watched_on": "2026-07-06"})
+
+        assert response.status_code == 409
+        assert "già" in response.json()["detail"]["message"]
+
+
+class TestCancelViewing:
+    def test_cancels_and_removes_the_viewing_from_the_list(self, write_api):
+        client, _ = write_api
+
+        response = client.delete("/api/viewings/1")
+
+        assert response.status_code == 200
+        assert "ID 1" in response.json()["message"]
+        assert [v["id"] for v in client.get("/api/viewings").json()] == [3, 2]
+
+    def test_cancelling_twice_is_rejected(self, write_api):
+        client, _ = write_api
+        assert client.delete("/api/viewings/1").status_code == 200
+
+        response = client.delete("/api/viewings/1")
+
+        assert response.status_code == 409
+        assert "già" in response.json()["detail"]["message"]
+
+    def test_an_unknown_viewing_is_not_found(self, write_api):
+        client, _ = write_api
+
+        assert client.delete("/api/viewings/99").status_code == 404
+
+
+class TestRateViewing:
+    def test_sets_the_rating(self, write_api):
+        client, _ = write_api
+
+        response = client.put("/api/viewings/2/rating", json={"rating": 4.5})
+
+        assert response.status_code == 200
+        assert "4,5" in response.json()["message"]
+        assert next(v for v in client.get("/api/viewings").json() if v["id"] == 2)["rating"] == 4.5
+
+    @pytest.mark.parametrize("rating", [0, 0.3, 5.5, 6])
+    def test_the_rating_must_be_a_half_step_between_half_and_five(self, write_api, rating):
+        client, _ = write_api
+
+        assert client.put("/api/viewings/1/rating", json={"rating": rating}).status_code == 422
+
+    def test_an_unknown_viewing_is_not_found(self, write_api):
+        client, _ = write_api
+
+        assert client.put("/api/viewings/99/rating", json={"rating": 4}).status_code == 404
+
+    def test_a_cancelled_viewing_cannot_be_rated(self, write_api):
+        client, _ = write_api
+        assert client.delete("/api/viewings/1").status_code == 200
+
+        response = client.put("/api/viewings/1/rating", json={"rating": 4})
+
+        assert response.status_code == 409

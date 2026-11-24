@@ -4,7 +4,7 @@ import pytest
 
 from watchlog.config import UserConfig
 from watchlog.db import Database
-from watchlog.edits import Done, ViewingEditor
+from watchlog.edits import Done, FilmChoice, ViewingEditor, WebEditor
 from watchlog.live import Ask, Cancelled, Rejected
 from watchlog.tmdb import Candidate, MovieDetails, TmdbError
 
@@ -476,3 +476,153 @@ class TestAnswerEdit:
 
         assert isinstance(outcome, Rejected) and "già" in outcome.text
         assert stored(path, 1)["watched_on"] == "2026-07-05"
+
+
+@pytest.fixture
+def web_setup(setup):
+    _, path = setup
+    client = FakeClient(FOUND)
+    return WebEditor(path, client, today=lambda: TODAY), path, client
+
+
+class TestWebCancel:
+    def test_cancels_without_asking_and_names_the_viewing(self, web_setup):
+        editor, path, _ = web_setup
+
+        message = editor.cancel(1)
+
+        assert "ID 1" in message and "Heat - La sfida (1995)" in message and "05/07/2026" in message
+        assert stored(path, 1)["deleted_at"] is not None
+        assert viewings(path) == [("franco", "Heat - La sfida")]
+
+    def test_an_unknown_viewing_is_rejected(self, web_setup):
+        editor, _, _ = web_setup
+
+        outcome = editor.cancel(99)
+
+        assert isinstance(outcome, Rejected) and "99" in outcome.text
+
+    def test_an_already_cancelled_viewing_is_rejected(self, web_setup):
+        editor, _, _ = web_setup
+        editor.cancel(1)
+
+        outcome = editor.cancel(1)
+
+        assert isinstance(outcome, Rejected) and "già" in outcome.text
+
+
+class TestWebRating:
+    def test_sets_the_rating_and_names_the_viewing(self, web_setup):
+        editor, path, _ = web_setup
+
+        message = editor.set_rating(1, 4.5)
+
+        assert "4,5" in message and "ID 1" in message
+        assert stored(path, 1)["rating"] == 4.5
+
+    @pytest.mark.parametrize("rating", [0, 0.3, 5.5, 6])
+    def test_an_invalid_rating_is_rejected(self, web_setup, rating):
+        editor, path, _ = web_setup
+
+        outcome = editor.set_rating(1, rating)
+
+        assert isinstance(outcome, Rejected) and "0,5" in outcome.text
+        assert stored(path, 1)["rating"] is None
+
+    def test_a_cancelled_viewing_cannot_be_rated(self, web_setup):
+        editor, _, _ = web_setup
+        editor.cancel(1)
+
+        assert isinstance(editor.set_rating(1, 4.5), Rejected)
+
+
+class TestWebEdit:
+    def test_something_to_change_is_required(self, web_setup):
+        editor, _, _ = web_setup
+
+        outcome = editor.edit(1)
+
+        assert isinstance(outcome, Rejected) and "data" in outcome.text and "film" in outcome.text
+
+    def test_a_new_date_is_written_and_counts_as_written_by_the_user(self, web_setup):
+        editor, path, _ = web_setup
+
+        message = editor.edit(1, watched_on=date(2026, 7, 6))
+
+        assert "06/07/2026" in message and "ID 1" in message
+        assert stored(path, 1)["watched_on"] == "2026-07-06"
+        assert stored(path, 1)["watched_on_source"] == "body"
+
+    def test_a_future_date_is_rejected(self, web_setup):
+        editor, path, _ = web_setup
+
+        outcome = editor.edit(1, watched_on=date(2026, 7, 11))
+
+        assert isinstance(outcome, Rejected) and "futuro" in outcome.text
+        assert stored(path, 1)["watched_on"] == "2026-07-05"
+
+    def test_a_resolved_film_replaces_the_movie_and_saves_its_details(self, web_setup):
+        editor, path, client = web_setup
+
+        message = editor.edit(1, film_text="Il sesto senso (1999)")
+
+        assert "Film 745" in message
+        assert stored(path, 1)["tmdb_id"] == 745
+        assert stored(path, 1)["watched_on"] == "2026-07-05"
+        assert client.details_calls == [745]
+
+    def test_an_ambiguous_film_returns_the_candidates(self, web_setup):
+        editor, _, _ = web_setup
+
+        outcome = editor.edit(1, film_text="Reunion (2024)")
+
+        assert isinstance(outcome, FilmChoice)
+        assert [tmdb_id for tmdb_id, _ in outcome.candidates] == [10, 11]
+        assert "Reunion" in outcome.text
+
+    def test_the_chosen_candidate_is_written(self, web_setup):
+        editor, path, client = web_setup
+
+        editor.edit(1, film_text="Reunion (2024)", tmdb_id=11)
+
+        assert stored(path, 1)["tmdb_id"] == 11
+        assert client.details_calls == [11]
+
+    def test_a_viewing_that_does_not_change_is_rejected(self, web_setup):
+        editor, _, _ = web_setup
+
+        outcome = editor.edit(1, watched_on=date(2026, 7, 5))
+
+        assert isinstance(outcome, Rejected) and "non cambia" in outcome.text
+
+    def test_a_same_day_duplicate_is_rejected(self, web_setup):
+        editor, path, _ = web_setup
+        db = Database.open(path)
+        db.add_viewing(
+            user_id=db.user_id_by_whatsapp("Mario Rossi"), tmdb_id=1, watched_on=date(2026, 7, 6),
+            watched_on_source="body", rating=None, sent_at=datetime(2026, 7, 7), source_ref="r9",
+        )
+        db.commit()
+        db.close()
+
+        outcome = editor.edit(1, watched_on=date(2026, 7, 6))
+
+        assert isinstance(outcome, Rejected) and "stesso film in quel giorno" in outcome.text
+
+    def test_an_unknown_viewing_is_rejected(self, web_setup):
+        editor, _, _ = web_setup
+
+        assert isinstance(editor.edit(99, watched_on=date(2026, 7, 6)), Rejected)
+
+    def test_a_cancelled_viewing_cannot_be_edited(self, web_setup):
+        editor, _, _ = web_setup
+        editor.cancel(1)
+
+        assert isinstance(editor.edit(1, watched_on=date(2026, 7, 6)), Rejected)
+
+    def test_a_tmdb_failure_is_raised_for_the_api_to_report(self, setup):
+        _, path = setup
+        editor = WebEditor(path, FakeClient({}, TmdbError("giù")), today=lambda: TODAY)
+
+        with pytest.raises(TmdbError):
+            editor.edit(1, film_text="Il sesto senso (1999)")

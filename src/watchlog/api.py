@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from watchlog.config import ConfigError, load_corrections, load_users
 from watchlog.dates import local_today
 from watchlog.db import Database
+from watchlog.edits import FilmChoice, WebEditor
 from watchlog.importer import ImportReport, import_chat, render_import_report
 from watchlog.listing import ViewingRow, list_viewings
 from watchlog.live import Ask, LiveService, Recorded, Rejected
@@ -33,6 +34,12 @@ from watchlog.tmdb import TmdbClient, TmdbError, http_fetch, load_api_key
 
 MAX_IMPORT_CHARS = 20 * 1024 * 1024
 _IMPORT_LOCK = threading.Lock()  # due import veri in parallelo si intralcerebbero sulle stesse righe
+
+
+def _check_rating(value: float | None) -> float | None:
+    if value is not None and (not 0.5 <= value <= 5 or abs(value * 2 - round(value * 2)) > 1e-9):
+        raise ValueError("il voto va da 0,5 a 5 a passi di 0,5")
+    return value
 
 
 class NameCount(BaseModel):
@@ -100,12 +107,27 @@ class ViewingIn(BaseModel):
     @field_validator("rating")
     @classmethod
     def _rating_is_half_steps(cls, value: float | None) -> float | None:
-        if value is not None and (not 0.5 <= value <= 5 or abs(value * 2 - round(value * 2)) > 1e-9):
-            raise ValueError("il voto va da 0,5 a 5 a passi di 0,5")
-        return value
+        return _check_rating(value)
 
 
-class ViewingCreated(BaseModel):
+class ViewingPatch(BaseModel):
+    """I campi cambiati di una visione: almeno uno tra data e film."""
+
+    watched_on: date | None = None
+    film: str | None = None  # "Titolo (anno)", come nell'inserimento
+    tmdb_id: int | None = Field(default=None, gt=0)  # scelto tra i candidati, se il titolo è ambiguo
+
+
+class RatingIn(BaseModel):
+    rating: float
+
+    @field_validator("rating")
+    @classmethod
+    def _rating_is_half_steps(cls, value: float) -> float:
+        return _check_rating(value)
+
+
+class MessageOut(BaseModel):
     message: str
 
 
@@ -155,6 +177,13 @@ def create_app(
     def get_client() -> TmdbClient:
         return client_factory() if client_factory is not None else TmdbClient(http_fetch(load_api_key()))
 
+    def require_viewing(db: Database, viewing_id: int) -> None:
+        if db.get_viewing(viewing_id) is None:
+            raise HTTPException(404, f"Non esiste la visione ID {viewing_id}")
+
+    def rejection(outcome: Rejected) -> HTTPException:
+        return HTTPException(409, detail={"status": "rejected", "message": outcome.text})
+
     @app.get("/api/users")
     def users(db: Database = Depends(open_db)) -> list[str]:
         return [row["name"] for row in db.query("SELECT name FROM users ORDER BY name")]
@@ -186,8 +215,8 @@ def create_app(
         except UnknownUser as error:
             raise HTTPException(404, str(error)) from error
 
-    @app.post("/api/viewings", status_code=201, response_model=ViewingCreated)
-    def add_viewing(body: ViewingIn, db: Database = Depends(open_db)) -> ViewingCreated:
+    @app.post("/api/viewings", status_code=201, response_model=MessageOut)
+    def add_viewing(body: ViewingIn, db: Database = Depends(open_db)) -> MessageOut:
         parsed = parse_film_text(body.film)
         if parsed is None:
             raise HTTPException(422, "Formato non valido: usa 'Titolo (anno)'")
@@ -211,7 +240,7 @@ def create_app(
             raise HTTPException(502, str(error)) from error
 
         if isinstance(outcome, Recorded):
-            return ViewingCreated(message=outcome.text)
+            return MessageOut(message=outcome.text)
         if isinstance(outcome, Ask):
             if outcome.kind == "film":
                 candidates = [
@@ -226,8 +255,53 @@ def create_app(
             if outcome.kind == "duplicate":
                 raise HTTPException(409, detail={"status": "duplicate", "message": outcome.text})
         if isinstance(outcome, Rejected):
-            raise HTTPException(409, detail={"status": "rejected", "message": outcome.text})
+            raise rejection(outcome)
         raise HTTPException(400, "Richiesta non valida")
+
+    @app.patch("/api/viewings/{viewing_id}", response_model=MessageOut)
+    def edit_viewing(viewing_id: int, body: ViewingPatch, db: Database = Depends(open_db)) -> MessageOut:
+        require_viewing(db, viewing_id)
+        if body.watched_on is None and body.film is None and body.tmdb_id is None:
+            raise HTTPException(422, "Dimmi cosa cambiare: la data, il film o entrambi")
+        client = None
+        if body.film is not None or body.tmdb_id is not None:  # solo per cambiare film
+            try:
+                client = get_client()
+            except TmdbError as error:
+                raise HTTPException(502, str(error)) from error
+        try:
+            outcome = WebEditor(db_path, client).edit(
+                viewing_id,
+                watched_on=body.watched_on,
+                film_text=body.film,
+                tmdb_id=body.tmdb_id,
+            )
+        except TmdbError as error:
+            raise HTTPException(502, str(error)) from error
+        if isinstance(outcome, FilmChoice):
+            candidates = [{"tmdb_id": tmdb_id, "label": label} for tmdb_id, label in outcome.candidates]
+            raise HTTPException(
+                409, detail={"status": "ambiguous", "message": outcome.text, "candidates": candidates}
+            )
+        if isinstance(outcome, Rejected):
+            raise rejection(outcome)
+        return MessageOut(message=outcome)
+
+    @app.delete("/api/viewings/{viewing_id}", response_model=MessageOut)
+    def cancel_viewing(viewing_id: int, db: Database = Depends(open_db)) -> MessageOut:
+        require_viewing(db, viewing_id)
+        outcome = WebEditor(db_path).cancel(viewing_id)
+        if isinstance(outcome, Rejected):
+            raise rejection(outcome)
+        return MessageOut(message=outcome)
+
+    @app.put("/api/viewings/{viewing_id}/rating", response_model=MessageOut)
+    def rate_viewing(viewing_id: int, body: RatingIn, db: Database = Depends(open_db)) -> MessageOut:
+        require_viewing(db, viewing_id)
+        outcome = WebEditor(db_path).set_rating(viewing_id, body.rating)
+        if isinstance(outcome, Rejected):
+            raise rejection(outcome)
+        return MessageOut(message=outcome)
 
     @app.post("/api/import", response_model=ImportResponse)
     def import_chat_endpoint(body: ImportIn, dry_run: bool = False) -> ImportResponse:
