@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import threading
 
 from watchlog.config import UserConfig
 from watchlog.db import Database
@@ -256,3 +257,11 @@ def test_file_database_uses_the_write_ahead_log(tmp_path):
 
     assert db.query("PRAGMA journal_mode") == [{"journal_mode": "wal"}]
     db.close()
+
+
+def test_a_connection_can_be_closed_from_another_thread(tmp_path):
+    """L'API apre la connessione in una dependency e la chiude in un altro thread del pool di FastAPI."""
+    db = Database.open(tmp_path / "w.sqlite", check_same_thread=False)
+    thread = threading.Thread(target=db.close)
+    thread.start()
+    thread.join()

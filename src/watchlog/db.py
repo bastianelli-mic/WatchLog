@@ -63,9 +63,9 @@ class Database:
         self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     @classmethod
-    def open(cls, path: Path) -> "Database":
+    def open(cls, path: Path, *, check_same_thread: bool = True) -> "Database":
         path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(path)
+        connection = sqlite3.connect(path, check_same_thread=check_same_thread)
         connection.execute("PRAGMA journal_mode = WAL")  # bot e API leggono e scrivono lo stesso file insieme
         return cls(connection)
 

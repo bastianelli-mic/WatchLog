@@ -168,7 +168,8 @@ def create_app(
     def open_db() -> Iterator[Database]:
         if not db_path.is_file():
             raise HTTPException(503, "Database non trovato")
-        db = Database.open(db_path)
+        # FastAPI può creare, usare e chiudere la dependency in thread diversi del pool.
+        db = Database.open(db_path, check_same_thread=False)
         try:
             yield db
         finally:
